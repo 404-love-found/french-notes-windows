@@ -1,5 +1,5 @@
 #define MyAppName "FrenchNotes"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "0.1.2"
 
 [Setup]
 ; Keep this ID unchanged so later versions upgrade the same application.
@@ -19,7 +19,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir=..\dist
 OutputBaseFilename=FrenchNotes-Setup-{#MyAppVersion}
-VersionInfoVersion=0.1.1.0
+VersionInfoVersion=0.1.2.0
 VersionInfoProductVersion={#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes

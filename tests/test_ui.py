@@ -69,6 +69,37 @@ class DesktopFlowTests(unittest.TestCase):
         self.assertIn("disabled", self.app.save_button.state())
         self.assertFalse(self.path.exists())
 
+    def test_save_and_export_buttons_fit_default_and_minimum_windows(self):
+        def check_bounds():
+            self.app.notebook.select(self.app.intake_tab)
+            for width, height in ((1180, 760), (1024, 640)):
+                self.root.geometry(f"{width}x{height}")
+                self.root.update()
+                for button in (self.app.save_button, self.app.export_button):
+                    with self.subTest(size=(width, height), button=button.cget("text")):
+                        # Withdrawn windows still calculate geometry. Checking
+                        # mapped widgets would skip every widget and miss this bug.
+                        self.assertGreaterEqual(button.winfo_width(), button.winfo_reqwidth())
+                        self.assertGreaterEqual(button.winfo_height(), button.winfo_reqheight())
+                        x = button.winfo_rootx() - self.root.winfo_rootx()
+                        y = button.winfo_rooty() - self.root.winfo_rooty()
+                        self.assertGreaterEqual(x, 0)
+                        self.assertGreaterEqual(y, 0)
+                        self.assertLessEqual(x + button.winfo_width(), self.root.winfo_width())
+                        self.assertLessEqual(y + button.winfo_height(), self.root.winfo_height())
+
+        check_bounds()
+        self.enter("bonjour\nBonjour\nJe suis étudiant.")
+        self.assertNotIn("disabled", self.app.save_button.state())
+        check_bounds()
+        self.app.save_new()
+        self.root.update()
+        self.assertNotIn("disabled", self.app.export_button.state())
+        check_bounds()
+        self.enter("bonjour\nBonjour\nJe suis étudiant.")
+        self.assertIn("disabled", self.app.save_button.state())
+        check_bounds()
+
     def test_manual_category_is_saved(self):
         self.enter("pomme de terre")
         self.app.preview_tree.selection_set("0")
