@@ -8,8 +8,8 @@
 
 在 [Releases 下载页](https://github.com/404-love-found/french-notes-windows/releases/latest) 获取 Windows 64 位版本：
 
-- **安装版：**下载 `FrenchNotes-Setup-0.1.3.exe`，双击安装后从开始菜单或桌面快捷方式启动。
-- **免安装版：**下载 `FrenchNotes-0.1.3-Windows-x64.zip`，解压后双击 `FrenchNotes.exe`。
+- **安装版：**下载 `FrenchNotes-Setup-0.1.4.exe`，双击安装后从开始菜单或桌面快捷方式启动。
+- **免安装版：**下载 `FrenchNotes-0.1.4-Windows-x64.zip`，解压后双击 `FrenchNotes.exe`。
 
 这两个版本均已包含 Python 和 Word 导出依赖。录入、查阅、去重和导出均可离线进行，不需要在电脑上安装 Python 或 Word。数据位于当前用户的本机应用数据目录；卸载程序不会删除 CSV 笔记。
 
