@@ -120,25 +120,33 @@ class CSVStore:
         self.backup_path = self.path.with_name(self.path.name + ".bak")
 
     def _read_snapshot(self) -> _Snapshot:
+        path_observed = False
         try:
             if self.path.is_symlink():
                 raise StoreError("CSV 路径是符号链接，请选择实际的 CSV 文件。")
+            before_path = _signature(self.path.stat())
+            path_observed = True
             with self.path.open("rb") as source:
-                before = _signature(os.fstat(source.fileno()))
+                before_fd = _signature(os.fstat(source.fileno()))
                 data = source.read()
-                after = _signature(os.fstat(source.fileno()))
-            current = _signature(self.path.stat())
+                after_fd = _signature(os.fstat(source.fileno()))
+            after_path = _signature(self.path.stat())
         except FileNotFoundError:
             # A file disappearing midway through reading is a concurrent edit,
-            # not an empty store.  Only the initial open may represent absence.
-            if "before" in locals():
+            # not an empty store.  Only the initial path query may mean absence.
+            if path_observed:
                 raise StoreError("CSV 在读取期间发生变化，请重新预览后重试。") from None
             return _Snapshot(None, None)
         except OSError as exc:
             raise StoreError(f"无法读取 CSV 文件：{exc}") from exc
-        if before != after or after != current:
+        # Compare each API with itself.  On Windows Python 3.12, path stat()
+        # keeps creation time in st_ctime, while fstat() can report ChangeTime.
+        # Comparing those signatures directly falsely flags atomic replacements.
+        # Path queries still detect replacement; fd queries detect edits during
+        # the read.  Save-time checks also compare the complete snapshot bytes.
+        if before_fd != after_fd or before_path != after_path:
             raise StoreError("CSV 在读取期间发生变化，请重新预览后重试。")
-        return _Snapshot(data, current)
+        return _Snapshot(data, after_path)
 
     def _parse_snapshot(self, snapshot: _Snapshot) -> list[Note]:
         if snapshot.data is None:
@@ -253,9 +261,10 @@ class CSVStore:
                     f"{self.lock_path}"
                 ) from exc
             acquired = True
-            stat_result = os.fstat(descriptor)
-            lock_identity = (stat_result.st_dev, stat_result.st_ino)
             with os.fdopen(descriptor, "wb") as lock_file:
+                # Keep identity comparisons within the path-stat API as well.
+                stat_result = self.lock_path.stat()
+                lock_identity = (stat_result.st_dev, stat_result.st_ino)
                 lock_file.write(payload)
                 lock_file.flush()
                 os.fsync(lock_file.fileno())

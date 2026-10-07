@@ -7,6 +7,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from french_notes.core import (
@@ -175,6 +176,83 @@ class CSVStoreTests(unittest.TestCase):
         self.assertEqual(self.store.load(), [note] + result.added)
         self.assertEqual(self.store.backup_path.read_bytes(), original)
 
+    def test_different_fd_and_path_signatures_do_not_report_false_edits(self):
+        real_fstat = os.fstat
+        original_note = make_note("bonjour")
+        # Windows Python 3.12 can expose ChangeTime through fstat(), but
+        # CreationTime through stat().  Other filesystem/API differences should
+        # also remain harmless as long as each API's own result stays stable.
+        variants = (
+            {"st_ctime_ns": 1_000_000_000},
+            {"st_dev": 1 << 48, "st_ino": 1 << 96, "st_mtime_ns": 100},
+        )
+        for differences in variants:
+            with self.subTest(differences=differences):
+                self.write_notes([original_note])
+                original = self.path.read_bytes()
+
+                def distinct_fd_stat(descriptor):
+                    actual = real_fstat(descriptor)
+                    fields = {
+                        name: getattr(actual, name)
+                        for name in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+                    }
+                    for name, offset in differences.items():
+                        fields[name] += offset
+                    return SimpleNamespace(**fields)
+
+                with patch("french_notes.core.os.fstat", side_effect=distinct_fd_stat):
+                    self.assertEqual(self.store.load(), [original_note])
+                    result = self.store.append(self.store.preview("merci"))
+                    self.assertEqual([note.french for note in result.added], ["merci"])
+                    self.assertEqual(self.store.load(), [original_note] + result.added)
+                self.assertEqual(self.store.backup_path.read_bytes(), original)
+                self.assert_clean()
+
+    def test_fd_metadata_change_during_read_is_still_detected(self):
+        self.write_notes([make_note("bonjour")])
+        actual = self.path.stat()
+        fields = {
+            name: getattr(actual, name)
+            for name in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+        }
+        before = SimpleNamespace(**fields)
+        fields["st_mtime_ns"] += 1_000_000_000
+        after = SimpleNamespace(**fields)
+        with patch("french_notes.core.os.fstat", side_effect=[before, after]):
+            with self.assertRaisesRegex(StoreError, "读取期间发生变化"):
+                self.store.load()
+
+    def test_path_replacement_during_read_is_still_detected(self):
+        self.write_notes([make_note("bonjour")])
+        real_stat = Path.stat
+        queries = 0
+
+        def changed_path_stat(path, *args, **kwargs):
+            nonlocal queries
+            actual = real_stat(path, *args, **kwargs)
+            if path != self.path or kwargs.get("follow_symlinks") is False:
+                return actual
+            queries += 1
+            if queries != 2:
+                return actual
+            fields = {
+                name: getattr(actual, name)
+                for name in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+            }
+            fields["st_ino"] += 1
+            return SimpleNamespace(**fields)
+
+        with patch("french_notes.core.Path.stat", autospec=True, side_effect=changed_path_stat):
+            with self.assertRaisesRegex(StoreError, "读取期间发生变化"):
+                self.store.load()
+
+    def test_file_disappearing_after_initial_stat_is_not_treated_as_empty(self):
+        self.write_notes([make_note("bonjour")])
+        with patch("french_notes.core.Path.open", side_effect=FileNotFoundError("removed")):
+            with self.assertRaisesRegex(StoreError, "读取期间发生变化"):
+                self.store.load()
+
     def test_existing_lock_is_not_deleted(self):
         self.store.lock_path.write_text("pid=123\n", encoding="utf-8")
         with self.assertRaisesRegex(StoreError, "手动删除锁文件"):
@@ -342,6 +420,34 @@ class CSVStoreTests(unittest.TestCase):
             with self.assertRaisesRegex(StoreError, "其他程序修改"):
                 self.store.append([Candidate("merci", "word", "new")])
         self.assertEqual(self.store.load(), [original_note, external_note])
+        self.assertEqual(self.store.backup_path.read_bytes(), b"older backup")
+        self.assert_clean()
+
+    def test_changed_bytes_are_detected_even_when_path_metadata_is_unchanged(self):
+        self.write_notes([make_note("bonjour")])
+        original = self.path.read_bytes()
+        original_stat = self.path.stat()
+        changed = original.replace(b"bonjour", b"bonsoir")
+        self.assertEqual(len(changed), len(original))
+        self.store.backup_path.write_bytes(b"older backup")
+        real_stat = Path.stat
+        real_stage = self.store._stage_notes
+
+        def unchanged_path_stat(path, *args, **kwargs):
+            if path == self.path:
+                return original_stat
+            return real_stat(path, *args, **kwargs)
+
+        def externally_edit(notes):
+            staged = real_stage(notes)
+            self.path.write_bytes(changed)
+            return staged
+
+        with patch("french_notes.core.Path.stat", autospec=True, side_effect=unchanged_path_stat):
+            with patch.object(self.store, "_stage_notes", side_effect=externally_edit):
+                with self.assertRaisesRegex(StoreError, "其他程序修改"):
+                    self.store.append([Candidate("merci", "word", "new")])
+        self.assertEqual(self.path.read_bytes(), changed)
         self.assertEqual(self.store.backup_path.read_bytes(), b"older backup")
         self.assert_clean()
 
