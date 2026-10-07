@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.spec
+.qa/
+*.lock
+notes.csv
+notes.csv.bak
+*.csv
+*.csv.bak
+*.docx
+settings.json
+error.log
