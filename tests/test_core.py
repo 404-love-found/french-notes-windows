@@ -104,7 +104,7 @@ class CSVStoreTests(unittest.TestCase):
         )
 
     def test_preview_reports_invalid_line(self):
-        with self.assertRaisesRegex(ValueError, "第 3 行"):
+        with self.assertRaisesRegex(ValueError, "Ligne 3 de la saisie"):
             self.store.preview("bonjour\n\n1234\n")
         self.assertFalse(self.path.exists())
 
@@ -220,7 +220,7 @@ class CSVStoreTests(unittest.TestCase):
         fields["st_mtime_ns"] += 1_000_000_000
         after = SimpleNamespace(**fields)
         with patch("french_notes.core.os.fstat", side_effect=[before, after]):
-            with self.assertRaisesRegex(StoreError, "读取期间发生变化"):
+            with self.assertRaisesRegex(StoreError, "a changé pendant sa lecture"):
                 self.store.load()
 
     def test_path_replacement_during_read_is_still_detected(self):
@@ -244,18 +244,18 @@ class CSVStoreTests(unittest.TestCase):
             return SimpleNamespace(**fields)
 
         with patch("french_notes.core.Path.stat", autospec=True, side_effect=changed_path_stat):
-            with self.assertRaisesRegex(StoreError, "读取期间发生变化"):
+            with self.assertRaisesRegex(StoreError, "a changé pendant sa lecture"):
                 self.store.load()
 
     def test_file_disappearing_after_initial_stat_is_not_treated_as_empty(self):
         self.write_notes([make_note("bonjour")])
         with patch("french_notes.core.Path.open", side_effect=FileNotFoundError("removed")):
-            with self.assertRaisesRegex(StoreError, "读取期间发生变化"):
+            with self.assertRaisesRegex(StoreError, "a changé pendant sa lecture"):
                 self.store.load()
 
     def test_existing_lock_is_not_deleted(self):
         self.store.lock_path.write_text("pid=123\n", encoding="utf-8")
-        with self.assertRaisesRegex(StoreError, "手动删除锁文件"):
+        with self.assertRaisesRegex(StoreError, "supprimer manuellement le fichier de verrouillage"):
             self.store.append([Candidate("bonjour", "word", "new")])
         self.assertEqual(self.store.lock_path.read_text(encoding="utf-8"), "pid=123\n")
         self.assertFalse(self.path.exists())
@@ -263,7 +263,7 @@ class CSVStoreTests(unittest.TestCase):
     def test_second_instance_cannot_save_during_first_instance_lock(self):
         second_store = CSVStore(self.path)
         with self.store._lock():
-            with self.assertRaisesRegex(StoreError, "另一个实例"):
+            with self.assertRaisesRegex(StoreError, "une autre instance"):
                 second_store.append([Candidate("bonjour", "word", "new")])
             self.assertTrue(self.store.lock_path.exists())
         self.assertFalse(self.path.exists())
@@ -337,7 +337,7 @@ class CSVStoreTests(unittest.TestCase):
             return real_replace(source, destination)
 
         with patch("french_notes.core.os.replace", side_effect=fail_csv_replace):
-            with self.assertRaisesRegex(StoreError, "无法保存 CSV"):
+            with self.assertRaisesRegex(StoreError, "Impossible d'enregistrer le fichier CSV"):
                 self.store.append([Candidate("merci", "word", "new")])
         self.assertEqual(self.path.read_bytes(), original)
         self.assertEqual(self.store.backup_path.read_bytes(), original)
@@ -361,7 +361,7 @@ class CSVStoreTests(unittest.TestCase):
             return real_unlink(path, *args, **kwargs)
 
         with patch("french_notes.core.Path.unlink", autospec=True, side_effect=fail_lock_unlink):
-            with self.assertRaisesRegex(StoreError, "笔记已成功写入 CSV") as caught:
+            with self.assertRaisesRegex(StoreError, "Les notes ont été enregistrées dans le CSV") as caught:
                 self.store.append([Candidate("bonjour", "word", "new")])
         saved_result = caught.exception.saved_result
         self.assertIsNotNone(saved_result)
@@ -386,7 +386,7 @@ class CSVStoreTests(unittest.TestCase):
                 with self.assertRaises(StoreError) as caught:
                     self.store.append([Candidate("merci", "word", "new")])
         self.assertIn("original write failure", str(caught.exception))
-        self.assertIn("无法清理锁文件", str(caught.exception))
+        self.assertIn("le fichier de verrouillage ne peut pas être supprimé", str(caught.exception))
         self.assertIsNone(caught.exception.saved_result)
         self.assertIsInstance(caught.exception.__cause__, OSError)
         self.assertEqual(self.path.read_bytes(), original)
@@ -417,7 +417,7 @@ class CSVStoreTests(unittest.TestCase):
             return staged
 
         with patch.object(self.store, "_stage_notes", side_effect=externally_edit):
-            with self.assertRaisesRegex(StoreError, "其他程序修改"):
+            with self.assertRaisesRegex(StoreError, "modifié par un autre programme"):
                 self.store.append([Candidate("merci", "word", "new")])
         self.assertEqual(self.store.load(), [original_note, external_note])
         self.assertEqual(self.store.backup_path.read_bytes(), b"older backup")
@@ -445,7 +445,7 @@ class CSVStoreTests(unittest.TestCase):
 
         with patch("french_notes.core.Path.stat", autospec=True, side_effect=unchanged_path_stat):
             with patch.object(self.store, "_stage_notes", side_effect=externally_edit):
-                with self.assertRaisesRegex(StoreError, "其他程序修改"):
+                with self.assertRaisesRegex(StoreError, "modifié par un autre programme"):
                     self.store.append([Candidate("merci", "word", "new")])
         self.assertEqual(self.path.read_bytes(), changed)
         self.assertEqual(self.store.backup_path.read_bytes(), b"older backup")
@@ -461,7 +461,7 @@ class CSVStoreTests(unittest.TestCase):
             return staged
 
         with patch.object(self.store, "_stage_notes", side_effect=externally_create):
-            with self.assertRaisesRegex(StoreError, "其他程序修改"):
+            with self.assertRaisesRegex(StoreError, "modifié par un autre programme"):
                 self.store.append([Candidate("merci", "word", "new")])
         self.assertEqual(self.store.load(), [external_note])
         self.assertFalse(self.store.backup_path.exists())

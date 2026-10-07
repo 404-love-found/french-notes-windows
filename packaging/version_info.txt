@@ -1,8 +1,8 @@
 # UTF-8 Windows executable metadata for PyInstaller.
 VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(0, 1, 0, 0),
-        prodvers=(0, 1, 0, 0),
+        filevers=(0, 1, 1, 0),
+        prodvers=(0, 1, 1, 0),
         mask=0x3F,
         flags=0x0,
         OS=0x40004,
@@ -12,16 +12,16 @@ VSVersionInfo(
     ),
     kids=[
         StringFileInfo([
-            StringTable('040904B0', [
+            StringTable('040C04B0', [
                 StringStruct('CompanyName', 'FrenchNotes'),
-                StringStruct('FileDescription', 'FrenchNotes - Offline French notes'),
-                StringStruct('FileVersion', '0.1.0.0'),
+                StringStruct('FileDescription', 'FrenchNotes - Notes de français hors ligne'),
+                StringStruct('FileVersion', '0.1.1.0'),
                 StringStruct('InternalName', 'FrenchNotes'),
                 StringStruct('OriginalFilename', 'FrenchNotes.exe'),
                 StringStruct('ProductName', 'FrenchNotes'),
-                StringStruct('ProductVersion', '0.1.0'),
+                StringStruct('ProductVersion', '0.1.1'),
             ])
         ]),
-        VarFileInfo([VarStruct('Translation', [1033, 1200])]),
+        VarFileInfo([VarStruct('Translation', [1036, 1200])]),
     ],
 )

@@ -15,8 +15,9 @@ from .core import CSVStore, Candidate, Note, StoreError, normalize_key
 from .exporter import export_docx
 
 
-CATEGORY_LABELS = {"word": "单词", "sentence": "句子"}
-STATUS_LABELS = {"new": "新增", "existing": "CSV 已有", "batch": "本批重复"}
+CATEGORY_LABELS = {"word": "Mot", "sentence": "Phrase"}
+CATEGORY_FILTERS = {"Tous": None, "Mots": "word", "Phrases": "sentence"}
+STATUS_LABELS = {"new": "À ajouter", "existing": "Déjà dans le CSV", "batch": "Doublon du lot"}
 
 
 def display_time(value: str) -> str:
@@ -46,10 +47,10 @@ class FrenchNotesApp:
         self.candidates: list[Candidate] = []
         self.notes: list[Note] = []
         self.search = tk.StringVar()
-        self.category_filter = tk.StringVar(value="全部")
-        self.status = tk.StringVar(value="每行输入一条法语内容，完成后点击“分析与去重”。")
+        self.category_filter = tk.StringVar(value="Tous")
+        self.status = tk.StringVar(value="Saisissez une note en français par ligne, puis cliquez sur « Analyser ».")
         self.path_label = tk.StringVar(value=str(self.store.path))
-        self.summary = tk.StringVar(value="分析后可以查看分类和重复项。")
+        self.summary = tk.StringVar(value="L’analyse affichera les catégories et les doublons.")
         self.library_summary = tk.StringVar()
         self._setup_style()
         self._build()
@@ -68,10 +69,10 @@ class FrenchNotesApp:
         return app_data_dir() / "notes.csv"
 
     def _setup_style(self) -> None:
-        self.root.title("法语笔记 · French Notes")
-        self.root.geometry("1120x760")
-        self.root.minsize(880, 620)
-        font = "Microsoft YaHei UI" if sys.platform == "win32" else "Helvetica"
+        self.root.title("Notes de français · FrenchNotes")
+        self.root.geometry("1180x760")
+        self.root.minsize(1024, 640)
+        font = "Segoe UI" if sys.platform == "win32" else "Helvetica"
         self.root.option_add("*Font", (font, 11))
         self.root.configure(bg="#f3f5f8")
         style = ttk.Style(self.root)
@@ -96,25 +97,25 @@ class FrenchNotesApp:
         header.pack(fill="x", pady=(0, 14))
         title = ttk.Frame(header)
         title.pack(side="left")
-        ttk.Label(title, text="法语笔记", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(title, text="本机保存 · 自动分类 · 仅录入新内容", style="Muted.TLabel").pack(anchor="w", pady=(6, 0))
-        self.export_button = ttk.Button(header, text="导出全部为 Word", command=self.export_all)
+        ttk.Label(title, text="Notes de français", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(title, text="Stockage local · Classement automatique · Ajout sans doublon", style="Muted.TLabel").pack(anchor="w", pady=(6, 0))
+        self.export_button = ttk.Button(header, text="Tout exporter vers Word", command=self.export_all)
         self.export_button.pack(side="right")
         path_row = ttk.Frame(outer)
         path_row.pack(fill="x", pady=(0, 14))
-        ttk.Label(path_row, text="当前 CSV：").pack(side="left")
+        ttk.Label(path_row, text="Fichier CSV :").pack(side="left")
         ttk.Entry(path_row, textvariable=self.path_label, state="readonly").pack(side="left", fill="x", expand=True, padx=7)
-        ttk.Button(path_row, text="选择 CSV", command=self.choose_csv).pack(side="left", padx=(3, 6))
-        ttk.Button(path_row, text="打开文件夹", command=self.open_folder).pack(side="left")
+        ttk.Button(path_row, text="Choisir un CSV", command=self.choose_csv).pack(side="left", padx=(3, 6))
+        ttk.Button(path_row, text="Ouvrir le dossier", command=self.open_folder).pack(side="left")
         self.notebook = ttk.Notebook(outer)
         self.notebook.pack(fill="both", expand=True)
         self.intake_tab = ttk.Frame(self.notebook, padding=16)
         self.library_tab = ttk.Frame(self.notebook, padding=16)
-        self.notebook.add(self.intake_tab, text="批量录入")
-        self.notebook.add(self.library_tab, text="已保存笔记")
+        self.notebook.add(self.intake_tab, text="Saisie par lot")
+        self.notebook.add(self.library_tab, text="Notes enregistrées")
         self._build_intake()
         self._build_library()
-        ttk.Label(outer, textvariable=self.status, style="Muted.TLabel", wraplength=1040).pack(fill="x", pady=(13, 0))
+        ttk.Label(outer, textvariable=self.status, style="Muted.TLabel", wraplength=960).pack(fill="x", pady=(13, 0))
 
     @staticmethod
     def _scroll_tree(parent: ttk.Frame, columns: tuple[str, ...]) -> ttk.Treeview:
@@ -141,8 +142,8 @@ class FrenchNotesApp:
         right = ttk.Frame(columns)
         left.grid(row=0, column=0, sticky="nsew")
         right.grid(row=0, column=1, sticky="nsew")
-        ttk.Label(left, text="1  输入法语内容", style="Section.TLabel").pack(anchor="w")
-        ttk.Label(left, text="每行一条，可一次粘贴多行；空行会忽略。", style="Muted.TLabel", wraplength=340).pack(anchor="w", pady=(7, 11))
+        ttk.Label(left, text="1  Saisir vos notes", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(left, text="Une note par ligne. Vous pouvez coller plusieurs lignes ; les lignes vides sont ignorées.", style="Muted.TLabel", wraplength=350).pack(anchor="w", pady=(7, 11))
         input_frame = ttk.Frame(left)
         input_frame.pack(fill="both", expand=True)
         self.input = tk.Text(input_frame, wrap="word", undo=True, width=27, height=13, bg="white", fg="#20314b", insertbackground="#20314b", relief="solid", borderwidth=1, padx=12, pady=12)
@@ -153,39 +154,39 @@ class FrenchNotesApp:
         self.input.bind("<<Modified>>", self._input_changed)
         buttons = ttk.Frame(left)
         buttons.pack(fill="x", pady=(12, 9))
-        ttk.Button(buttons, text="分析与去重", style="Primary.TButton", command=self.analyze).pack(side="left")
-        ttk.Button(buttons, text="清空", command=self.clear_input).pack(side="right")
-        ttk.Label(left, text="比较时忽略空格差异和大小写。\n保留重音与标点差异。", style="Muted.TLabel").pack(anchor="w")
-        ttk.Label(right, text="2  检查分类与重复项", style="Section.TLabel").pack(anchor="w")
-        ttk.Label(right, text="词组、缩写及短句可选中后手动修正分类。", style="Muted.TLabel", wraplength=530).pack(anchor="w", pady=(7, 11))
+        ttk.Button(buttons, text="Analyser", style="Primary.TButton", command=self.analyze).pack(side="left")
+        ttk.Button(buttons, text="Effacer", command=self.clear_input).pack(side="right")
+        ttk.Label(left, text="La comparaison ignore la casse et les différences d’espacement. Les accents et la ponctuation restent distincts.", style="Muted.TLabel", wraplength=350).pack(anchor="w")
+        ttk.Label(right, text="2  Vérifier le classement et les doublons", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(right, text="Sélectionnez les nouvelles notes pour corriger leur catégorie, notamment les expressions et les abréviations.", style="Muted.TLabel", wraplength=560).pack(anchor="w", pady=(7, 11))
         self.preview_tree = self._scroll_tree(right, ("category", "french", "status"))
-        for key, label, width in (("category", "分类", 66), ("french", "法语内容", 285), ("status", "结果", 94)):
+        for key, label, width in (("category", "Catégorie", 110), ("french", "Contenu en français", 285), ("status", "Résultat", 160)):
             self.preview_tree.heading(key, text=label)
             self.preview_tree.column(key, width=width, minwidth=width, stretch=key == "french", anchor="w")
         self.preview_tree.tag_configure("duplicate", foreground="#7a8491")
         self.preview_tree.bind("<Double-1>", self.show_preview_text)
         category_buttons = ttk.Frame(right)
         category_buttons.pack(fill="x", pady=(10, 6))
-        ttk.Label(category_buttons, text="选中的新增项：").pack(side="left")
-        ttk.Button(category_buttons, text="设为单词", command=lambda: self.set_category("word")).pack(side="left", padx=4)
-        ttk.Button(category_buttons, text="设为句子", command=lambda: self.set_category("sentence")).pack(side="left")
-        ttk.Label(right, textvariable=self.summary, style="Muted.TLabel").pack(anchor="w", pady=(4, 9))
-        self.save_button = ttk.Button(right, text="3  录入新内容", style="Primary.TButton", command=self.save_new, state="disabled")
+        ttk.Label(category_buttons, text="Classer la sélection :").pack(side="left")
+        ttk.Button(category_buttons, text="Mot", command=lambda: self.set_category("word")).pack(side="left", padx=4)
+        ttk.Button(category_buttons, text="Phrase", command=lambda: self.set_category("sentence")).pack(side="left")
+        ttk.Label(right, textvariable=self.summary, style="Muted.TLabel", wraplength=560).pack(anchor="w", pady=(4, 9))
+        self.save_button = ttk.Button(right, text="3  Enregistrer les nouvelles notes", style="Primary.TButton", command=self.save_new, state="disabled")
         self.save_button.pack(fill="x")
 
     def _build_library(self) -> None:
         controls = ttk.Frame(self.library_tab)
         controls.pack(fill="x", pady=(0, 12))
-        ttk.Label(controls, text="搜索：").pack(side="left")
+        ttk.Label(controls, text="Rechercher :").pack(side="left")
         ttk.Entry(controls, textvariable=self.search).pack(side="left", fill="x", expand=True, padx=(4, 14))
-        ttk.Combobox(controls, values=("全部", "单词", "句子"), textvariable=self.category_filter, state="readonly", width=8).pack(side="left", padx=(0, 10))
-        ttk.Button(controls, text="刷新 CSV", command=self.refresh_library).pack(side="left")
+        ttk.Combobox(controls, values=tuple(CATEGORY_FILTERS), textvariable=self.category_filter, state="readonly", width=9).pack(side="left", padx=(0, 10))
+        ttk.Button(controls, text="Actualiser le CSV", command=self.refresh_library).pack(side="left")
         self.library_tree = self._scroll_tree(self.library_tab, ("category", "french", "created"))
-        for key, label, width in (("category", "分类", 85), ("french", "法语内容", 650), ("created", "录入时间", 180)):
+        for key, label, width in (("category", "Catégorie", 110), ("french", "Contenu en français", 620), ("created", "Date d’ajout", 180)):
             self.library_tree.heading(key, text=label)
             self.library_tree.column(key, width=width, minwidth=width, stretch=key == "french")
         self.library_tree.bind("<Double-1>", self.show_library_text)
-        ttk.Label(self.library_tab, textvariable=self.library_summary, style="Muted.TLabel").pack(anchor="w", pady=(12, 0))
+        ttk.Label(self.library_tab, textvariable=self.library_summary, style="Muted.TLabel", wraplength=960).pack(anchor="w", pady=(12, 0))
         self.search.trace_add("write", lambda *_args: self._render_library())
         self.category_filter.trace_add("write", lambda *_args: self._render_library())
 
@@ -198,18 +199,18 @@ class FrenchNotesApp:
         self.candidates = []
         self.preview_tree.delete(*self.preview_tree.get_children())
         self.save_button.configure(state="disabled")
-        self.summary.set("输入或 CSV 已改变，请重新分析。")
+        self.summary.set("La saisie ou le CSV a changé. Relancez l’analyse.")
 
     def clear_input(self) -> None:
         self.input.delete("1.0", "end")
         self.input.edit_modified(False)
         self._invalidate_preview()
-        self.status.set("输入已清空，CSV 中的笔记未受影响。")
+        self.status.set("La saisie a été effacée. Les notes du CSV sont conservées.")
 
     def analyze(self) -> None:
         text = self.input.get("1.0", "end-1c")
         if not text.strip():
-            self.status.set("请先输入法语单词或句子，每行一条。")
+            self.status.set("Saisissez d’abord des mots ou des phrases en français, une note par ligne.")
             self.input.focus_set()
             return
         # Consume pending Text modification notifications before generating preview.
@@ -218,7 +219,7 @@ class FrenchNotesApp:
             candidates = self.store.preview(text)
         except (StoreError, OSError, ValueError, RuntimeError) as error:
             self._invalidate_preview()
-            self._error("无法分析", error)
+            self._error("Analyse impossible", error)
             return
         self.candidates = candidates
         self.preview_tree.delete(*self.preview_tree.get_children())
@@ -227,9 +228,9 @@ class FrenchNotesApp:
         new = sum(item.status == "new" for item in candidates)
         existing = sum(item.status == "existing" for item in candidates)
         batch = sum(item.status == "batch" for item in candidates)
-        self.summary.set(f"新增 {new} 条  ·  CSV 已有 {existing} 条  ·  本批重复 {batch} 条")
+        self.summary.set(f"Ajouts : {new}  ·  Notes déjà enregistrées : {existing}  ·  Doublons du lot : {batch}")
         self.save_button.configure(state="normal" if new else "disabled")
-        self.status.set("检查分类后点击“录入新内容”，此时才会保存到 CSV。" if new else "没有新内容，CSV 不会改动。")
+        self.status.set("Vérifiez les catégories, puis cliquez sur « Enregistrer les nouvelles notes » pour écrire dans le CSV." if new else "Aucune nouvelle note. Le CSV reste inchangé.")
 
     def set_category(self, category: str) -> None:
         changed = 0
@@ -239,7 +240,7 @@ class FrenchNotesApp:
                 item.category = category
                 self.preview_tree.item(selected, values=(CATEGORY_LABELS[category], item.french, STATUS_LABELS[item.status]))
                 changed += 1
-        self.status.set(f"已将 {changed} 条新增内容设为{CATEGORY_LABELS[category]}。" if changed else "请在预览中选中新增内容，已有和重复项不会修改。")
+        self.status.set(f"Notes reclassées : {changed}. Catégorie : {CATEGORY_LABELS[category]}." if changed else "Sélectionnez de nouvelles notes dans l’aperçu. Les notes déjà enregistrées et les doublons restent inchangés.")
 
     def save_new(self) -> None:
         if not self.candidates:
@@ -249,22 +250,22 @@ class FrenchNotesApp:
             result = self.store.append(self.candidates)
         except StoreError as error:
             if error.saved_result is None:
-                self._error("保存失败，输入内容仍保留", error)
+                self._error("Échec de l’enregistrement. La saisie est conservée", error)
                 return
             result = error.saved_result
             cleanup_warning = str(error)
         except (OSError, ValueError, RuntimeError) as error:
-            self._error("保存失败，输入内容仍保留", error)
+            self._error("Échec de l’enregistrement. La saisie est conservée", error)
             return
         self.input.delete("1.0", "end")
         self.input.edit_modified(False)
         self._invalidate_preview()
         self.refresh_library()
-        self.summary.set(f"已保存 {len(result.added)} 条，跳过 {result.skipped} 条重复内容。")
-        self.status.set(f"录入完成：新增 {len(result.added)} 条，跳过 {result.skipped} 条。数据位于 {self.store.path}")
+        self.summary.set(f"Notes enregistrées : {len(result.added)}  ·  Doublons ignorés : {result.skipped}")
+        self.status.set(f"Enregistrement terminé. Ajouts : {len(result.added)} ; doublons ignorés : {result.skipped}. Fichier : {self.store.path}")
         if cleanup_warning:
             self.status.set(cleanup_warning)
-            messagebox.showwarning("保存已完成，请检查锁文件", cleanup_warning, parent=self.root)
+            messagebox.showwarning("Enregistrement terminé. Vérifiez le fichier de verrouillage", cleanup_warning, parent=self.root)
 
     def refresh_library(self) -> None:
         try:
@@ -272,39 +273,39 @@ class FrenchNotesApp:
         except (StoreError, OSError, ValueError, RuntimeError) as error:
             self.notes = []
             self._render_library()
-            self._error("无法读取当前 CSV", error)
+            self._error("Lecture du CSV actuel impossible", error)
             return
         self._render_library()
 
     def _render_library(self) -> None:
         self.library_tree.delete(*self.library_tree.get_children())
         query = normalize_key(self.search.get())
-        category = self.category_filter.get()
+        category = CATEGORY_FILTERS[self.category_filter.get()]
         shown = 0
         for index, note in enumerate(self.notes):
-            if category != "全部" and CATEGORY_LABELS[note.category] != category:
+            if category is not None and note.category != category:
                 continue
             if query and query not in normalize_key(note.french):
                 continue
             self.library_tree.insert("", "end", iid=str(index), values=(CATEGORY_LABELS[note.category], note.french, display_time(note.created_at)))
             shown += 1
         words = sum(note.category == "word" for note in self.notes)
-        self.library_summary.set(f"共 {len(self.notes)} 条  ·  单词 {words} 条  ·  句子 {len(self.notes) - words} 条  ·  当前显示 {shown} 条（双击查看全文）")
+        self.library_summary.set(f"Total : {len(self.notes)}  ·  Mots : {words}  ·  Phrases : {len(self.notes) - words}  ·  Notes affichées : {shown}. Double-cliquez pour lire une note en entier.")
         self.export_button.configure(state="normal" if self.notes else "disabled")
 
     def choose_csv(self) -> None:
-        name = filedialog.asksaveasfilename(parent=self.root, title="选择已有 CSV 或指定新文件", initialdir=str(self.store.path.parent) if self.store.path.parent.exists() else str(Path.home()), initialfile=self.store.path.name, defaultextension=".csv", filetypes=[("CSV 文件", "*.csv")], confirmoverwrite=False)
+        name = filedialog.asksaveasfilename(parent=self.root, title="Choisir un CSV existant ou créer un nouveau fichier", initialdir=str(self.store.path.parent) if self.store.path.parent.exists() else str(Path.home()), initialfile=self.store.path.name, defaultextension=".csv", filetypes=[("Fichiers CSV", "*.csv")], confirmoverwrite=False)
         if not name:
             return
         new_path = Path(name)
         if new_path.suffix.lower() != ".csv":
-            messagebox.showerror("文件格式", "请选择 .csv 文件。", parent=self.root)
+            messagebox.showerror("Format du fichier", "Choisissez un fichier .csv.", parent=self.root)
             return
         new_store = CSVStore(new_path)
         try:
             notes = new_store.load()
         except (StoreError, OSError, ValueError, RuntimeError) as error:
-            self._error("CSV 格式不受支持", error)
+            self._error("Format CSV non pris en charge", error)
             return
         self.store = new_store
         self.notes = notes
@@ -316,9 +317,9 @@ class FrenchNotesApp:
             temp = self.config_path.with_suffix(".tmp")
             temp.write_text(json.dumps({"csv_path": str(new_path)}, ensure_ascii=False, indent=2), encoding="utf-8")
             os.replace(temp, self.config_path)
-            self.status.set("已切换 CSV。输入内容保留，请重新分析。")
+            self.status.set("Un autre fichier CSV a été sélectionné. La saisie est conservée ; relancez l’analyse.")
         except OSError as error:
-            self.status.set(f"CSV 已切换，但无法记住路径：{error}")
+            self.status.set(f"Un autre CSV a été sélectionné, mais son chemin n’a pas pu être mémorisé : {error}")
 
     def open_folder(self) -> None:
         try:
@@ -331,30 +332,30 @@ class FrenchNotesApp:
             else:
                 subprocess.Popen(["xdg-open", str(folder)])
         except OSError as error:
-            self._error("无法打开文件夹", error)
+            self._error("Ouverture du dossier impossible", error)
 
     def export_all(self) -> None:
         try:
             notes = self.store.load()
         except (StoreError, OSError, ValueError, RuntimeError) as error:
-            self._error("无法读取 CSV", error)
+            self._error("Lecture du CSV impossible", error)
             return
         if not notes:
-            self.status.set("当前 CSV 没有笔记，请先录入。")
+            self.status.set("Le CSV actuel ne contient aucune note. Enregistrez des notes avant l’export.")
             return
-        name = filedialog.asksaveasfilename(parent=self.root, title="导出全部已保存笔记", initialdir=str(self.store.path.parent), initialfile="法语笔记.docx", defaultextension=".docx", filetypes=[("Word 文档", "*.docx")])
+        name = filedialog.asksaveasfilename(parent=self.root, title="Exporter toutes les notes enregistrées", initialdir=str(self.store.path.parent), initialfile="Notes de français.docx", defaultextension=".docx", filetypes=[("Documents Word", "*.docx")])
         if not name:
             return
         try:
             exported = export_docx(notes, Path(name))
         except ImportError:
-            messagebox.showerror("缺少导出组件", "请运行 setup_windows.bat 安装依赖后重试。CSV 保存不受影响。", parent=self.root)
+            messagebox.showerror("Composant d’export manquant", "Exécutez setup_windows.bat pour installer les dépendances, puis réessayez. L’enregistrement au format CSV reste disponible.", parent=self.root)
             return
         except (OSError, ValueError, RuntimeError) as error:
-            self._error("Word 导出失败", error)
+            self._error("Échec de l’export Word", error)
             return
-        self.status.set(f"已导出 {len(notes)} 条笔记：{exported}")
-        messagebox.showinfo("导出完成", f"已按单词和句子分组导出 {len(notes)} 条。\n\n{exported}", parent=self.root)
+        self.status.set(f"Notes exportées : {len(notes)}. Fichier : {exported}")
+        messagebox.showinfo("Export terminé", f"Notes exportées : {len(notes)}, regroupées en mots et en phrases.\n\n{exported}", parent=self.root)
 
     def show_preview_text(self, _event: tk.Event | None = None) -> None:
         selected = self.preview_tree.selection()
@@ -370,12 +371,12 @@ class FrenchNotesApp:
 
     def close(self) -> None:
         if self.input.get("1.0", "end-1c").strip():
-            if not messagebox.askyesno("尚有未录入内容", "输入区的内容还未保存。是否直接退出？", parent=self.root):
+            if not messagebox.askyesno("Notes non enregistrées", "La saisie n’a pas encore été enregistrée. Voulez-vous quitter quand même ?", parent=self.root):
                 return
         self.root.destroy()
 
     def _error(self, title: str, error: Exception) -> None:
-        self.status.set(f"{title}：{error}")
+        self.status.set(f"{title} : {error}")
         messagebox.showerror(title, str(error), parent=self.root)
 
 

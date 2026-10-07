@@ -59,12 +59,12 @@ class ExporterTests(unittest.TestCase):
         self.assertEqual(
             [paragraph_text(paragraph) for paragraph in paragraphs],
             [
-                "法语笔记",
-                "共 4 条笔记，其中单词 2 条，句子 2 条。以下按类别列出已保存的法语内容。",
-                "单词",
+                "Notes de français",
+                "4 notes enregistrées : 2 mots et 2 phrases. Le contenu est regroupé par catégorie.",
+                "Mots",
                 "1.\tcœur",
                 "2.\tÉléphant",
-                "句子",
+                "Phrases",
                 "1.\tOù est l’école ?\nÀ côté du café.",
                 "2.\tJe voudrais un café, s’il vous plaît.",
             ],
@@ -96,6 +96,7 @@ class ExporterTests(unittest.TestCase):
             self.assertEqual(fonts.get(W + "hAnsi"), "Arial")
             self.assertEqual(fonts.get(W + "eastAsia"), "Microsoft YaHei")
             self.assertIsNone(fonts.get(W + "asciiTheme"))
+            self.assertEqual(properties.find("w:lang", NS).get(W + "val"), "fr-FR")
             self.assertIsNone(style.find("w:pPr/w:pBdr", NS))
 
     def test_empty_category_is_explicit_and_numbering_starts_at_one(self) -> None:
@@ -103,11 +104,32 @@ class ExporterTests(unittest.TestCase):
         paragraphs = self.xml().findall("./w:body/w:p", NS)
         texts = [paragraph_text(paragraph) for paragraph in paragraphs]
         self.assertIn("1.\tcœur", texts)
-        self.assertEqual(texts[-2:], ["句子", "暂无记录。"])
+        self.assertEqual(texts[-2:], ["Phrases", "Aucune phrase enregistrée."])
+        self.assertEqual(
+            texts[1],
+            "1 note enregistrée : 1 mot et 0 phrase. Le contenu est regroupé par catégorie.",
+        )
+
+    def test_sentence_only_export_uses_singular_and_empty_word_message(self) -> None:
+        export_docx([self.notes[0]], self.path)
+        texts = [paragraph_text(paragraph) for paragraph in self.xml().findall("./w:body/w:p", NS)]
+        self.assertEqual(
+            texts[1],
+            "1 note enregistrée : 0 mot et 1 phrase. Le contenu est regroupé par catégorie.",
+        )
+        self.assertEqual(texts[2:4], ["Mots", "Aucun mot enregistré."])
+
+    def test_mixed_single_categories_use_plural_total_and_singular_categories(self) -> None:
+        export_docx(self.notes[:2], self.path)
+        texts = [paragraph_text(paragraph) for paragraph in self.xml().findall("./w:body/w:p", NS)]
+        self.assertEqual(
+            texts[1],
+            "2 notes enregistrées : 1 mot et 1 phrase. Le contenu est regroupé par catégorie.",
+        )
 
     def test_empty_notes_leave_existing_document_untouched(self) -> None:
         self.path.write_bytes(b"original document")
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "Aucune note à exporter"):
             export_docx([], self.path)
         self.assertEqual(self.path.read_bytes(), b"original document")
         self.assertEqual(list(self.root.iterdir()), [self.path])
@@ -115,10 +137,16 @@ class ExporterTests(unittest.TestCase):
     def test_non_docx_destination_cannot_overwrite_csv(self) -> None:
         csv_path = self.root / "notes.csv"
         csv_path.write_bytes(b"source csv")
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "Le fichier Word exporté doit porter l’extension"):
             export_docx(self.notes, csv_path)
         self.assertEqual(csv_path.read_bytes(), b"source csv")
         self.assertEqual(list(self.root.iterdir()), [csv_path])
+
+    def test_invalid_category_reports_a_french_validation_error(self) -> None:
+        invalid_note = Note("invalid", "unknown", "café", "2026-10-07T12:00:00")
+        with self.assertRaisesRegex(ValueError, "Chaque note doit appartenir à la catégorie « mot » ou « phrase »"):
+            export_docx([invalid_note], self.path)
+        self.assertEqual(list(self.root.iterdir()), [])
 
     def test_successful_export_replaces_old_document_and_leaves_no_temp(self) -> None:
         self.path.write_bytes(b"old document")

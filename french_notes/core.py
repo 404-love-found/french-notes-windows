@@ -73,10 +73,13 @@ class _LockState:
 def clean_text(text: str) -> str:
     """Use NFC and one space per whitespace run, preserving case and punctuation."""
     if not isinstance(text, str):
-        raise ValueError("法语内容必须是文字。")
+        raise ValueError("Le contenu en français doit être du texte.")
     for char in text:
         if unicodedata.category(char) in ("Cc", "Cs") and char not in "\t\r\n":
-            raise ValueError("法语内容包含不支持的控制字符，请删除后重试。")
+            raise ValueError(
+                "Le contenu contient des caractères de contrôle non pris en charge. "
+                "Supprimez-les, puis réessayez."
+            )
     return " ".join(unicodedata.normalize("NFC", text).split())
 
 
@@ -88,9 +91,12 @@ def normalize_key(text: str) -> str:
 def _valid_french(text: str) -> str:
     cleaned = clean_text(text)
     if not cleaned:
-        raise ValueError("法语内容不能为空。")
+        raise ValueError("Le contenu en français ne peut pas être vide.")
     if not any(char.isalpha() for char in cleaned):
-        raise ValueError("每条笔记至少需要一个字母，不能只有数字或标点。")
+        raise ValueError(
+            "Chaque note doit contenir au moins une lettre ; "
+            "les nombres ou la ponctuation seuls ne suffisent pas."
+        )
     return cleaned
 
 
@@ -123,7 +129,10 @@ class CSVStore:
         path_observed = False
         try:
             if self.path.is_symlink():
-                raise StoreError("CSV 路径是符号链接，请选择实际的 CSV 文件。")
+                raise StoreError(
+                    "Le chemin du CSV est un lien symbolique. "
+                    "Sélectionnez le fichier CSV réel."
+                )
             before_path = _signature(self.path.stat())
             path_observed = True
             with self.path.open("rb") as source:
@@ -135,17 +144,23 @@ class CSVStore:
             # A file disappearing midway through reading is a concurrent edit,
             # not an empty store.  Only the initial path query may mean absence.
             if path_observed:
-                raise StoreError("CSV 在读取期间发生变化，请重新预览后重试。") from None
+                raise StoreError(
+                    "Le fichier CSV a changé pendant sa lecture. "
+                    "Actualisez l'aperçu, puis réessayez."
+                ) from None
             return _Snapshot(None, None)
         except OSError as exc:
-            raise StoreError(f"无法读取 CSV 文件：{exc}") from exc
+            raise StoreError(f"Impossible de lire le fichier CSV : {exc}") from exc
         # Compare each API with itself.  On Windows Python 3.12, path stat()
         # keeps creation time in st_ctime, while fstat() can report ChangeTime.
         # Comparing those signatures directly falsely flags atomic replacements.
         # Path queries still detect replacement; fd queries detect edits during
         # the read.  Save-time checks also compare the complete snapshot bytes.
         if before_fd != after_fd or before_path != after_path:
-            raise StoreError("CSV 在读取期间发生变化，请重新预览后重试。")
+            raise StoreError(
+                "Le fichier CSV a changé pendant sa lecture. "
+                "Actualisez l'aperçu, puis réessayez."
+            )
         return _Snapshot(data, after_path)
 
     def _parse_snapshot(self, snapshot: _Snapshot) -> list[Note]:
@@ -154,7 +169,10 @@ class CSVStore:
         try:
             decoded = snapshot.data.decode("utf-8-sig")
         except UnicodeDecodeError as exc:
-            raise StoreError("CSV 编码无效，请使用 UTF-8 编码保存文件；原文件未修改。") from exc
+            raise StoreError(
+                "L'encodage du CSV est invalide. Enregistrez le fichier en UTF-8. "
+                "Le fichier d'origine n'a pas été modifié."
+            ) from exc
 
         notes: list[Note] = []
         ids: set[str] = set()
@@ -163,38 +181,47 @@ class CSVStore:
             header = next(reader, None)
             if header != list(CSV_HEADER):
                 raise StoreError(
-                    "CSV 表头必须依次为 id,category,french,created_at；原文件未修改。"
+                    "L'en-tête du CSV doit contenir, dans cet ordre : "
+                    "id,category,french,created_at. Le fichier d'origine n'a pas été modifié."
                 )
             for row in reader:
                 line_number = reader.line_num
                 if len(row) != len(CSV_HEADER):
                     raise StoreError(
-                        f"CSV 第 {line_number} 行字段数量错误，应有 4 个字段；原文件未修改。"
+                        f"Ligne {line_number} du CSV : nombre de champs incorrect "
+                        "(4 champs attendus). Le fichier d'origine n'a pas été modifié."
                     )
                 note = Note(*row)
                 try:
                     parsed_id = uuid.UUID(note.note_id)
                     if str(parsed_id) != note.note_id:
-                        raise ValueError("ID 必须为标准小写 UUID。")
+                        raise ValueError(
+                            "L'identifiant doit être un UUID au format standard, en minuscules."
+                        )
                     if note.note_id in ids:
-                        raise ValueError("存在重复的 ID。")
+                        raise ValueError("Un identifiant est présent plusieurs fois.")
                     if note.category not in CATEGORIES:
-                        raise ValueError("分类必须为 word 或 sentence。")
+                        raise ValueError("La catégorie doit être « word » ou « sentence ».")
                     _valid_french(note.french)
                     if "T" not in note.created_at:
-                        raise ValueError("创建时间必须为 ISO 格式的日期和时间。")
+                        raise ValueError(
+                            "La date de création doit inclure une date et une heure au format ISO."
+                        )
                     timestamp = note.created_at
                     if timestamp.endswith("Z"):
                         timestamp = timestamp[:-1] + "+00:00"
                     datetime.fromisoformat(timestamp)
                 except (ValueError, TypeError, AttributeError) as exc:
                     raise StoreError(
-                        f"CSV 第 {line_number} 行内容无效：{exc} 原文件未修改。"
+                        f"Ligne {line_number} du CSV : données invalides. "
+                        f"{exc} Le fichier d'origine n'a pas été modifié."
                     ) from exc
                 ids.add(note.note_id)
                 notes.append(note)
         except csv.Error as exc:
-            raise StoreError(f"CSV 格式损坏：{exc}；原文件未修改。") from exc
+            raise StoreError(
+                f"Le CSV est mal formé : {exc}. Le fichier d'origine n'a pas été modifié."
+            ) from exc
         return notes
 
     def load(self) -> list[Note]:
@@ -204,7 +231,7 @@ class CSVStore:
     def preview(self, text: str) -> list[Candidate]:
         """Split input by line and identify existing and within-batch duplicates."""
         if not isinstance(text, str):
-            raise ValueError("输入内容必须是文字。")
+            raise ValueError("La saisie doit être du texte.")
         existing = {normalize_key(note.french) for note in self.load()}
         seen: set[str] = set()
         candidates: list[Candidate] = []
@@ -215,7 +242,9 @@ class CSVStore:
                     continue
                 category = classify(french)
             except ValueError as exc:
-                raise ValueError(f"输入第 {line_number} 行无效：{exc}") from exc
+                raise ValueError(
+                    f"Ligne {line_number} de la saisie : contenu invalide. {exc}"
+                ) from exc
             key = normalize_key(french)
             if key in existing:
                 status = "existing"
@@ -230,7 +259,10 @@ class CSVStore:
     def _assert_unchanged(self, expected: _Snapshot) -> None:
         actual = self._read_snapshot()
         if actual != expected:
-            raise StoreError("CSV 已被其他程序修改，保存已取消；请重新预览后重试。")
+            raise StoreError(
+                "Le fichier CSV a été modifié par un autre programme. "
+                "Enregistrement annulé. Actualisez l'aperçu, puis réessayez."
+            )
 
     @contextmanager
     def _lock(self) -> Iterator[_LockState]:
@@ -256,8 +288,11 @@ class CSVStore:
                 )
             except FileExistsError as exc:
                 raise StoreError(
-                    "CSV 正在被另一个实例保存。请关闭其他实例后重试；"
-                    "若上次程序意外退出，请确认没有程序正在保存，再手动删除锁文件："
+                    "Le fichier CSV est en cours d'enregistrement par une autre instance. "
+                    "Fermez les autres instances, puis réessayez. "
+                    "Si l'application s'est arrêtée de façon inattendue, vérifiez "
+                    "qu'aucun enregistrement n'est en cours avant de supprimer "
+                    "manuellement le fichier de verrouillage : "
                     f"{self.lock_path}"
                 ) from exc
             acquired = True
@@ -271,7 +306,7 @@ class CSVStore:
             lock_written = True
             yield state
         except OSError as exc:
-            pending_error = StoreError(f"无法保存 CSV 文件：{exc}")
+            pending_error = StoreError(f"Impossible d'enregistrer le fichier CSV : {exc}")
             raise pending_error from exc
         except BaseException as exc:
             pending_error = exc
@@ -279,11 +314,11 @@ class CSVStore:
         finally:
             if acquired:
                 if state.saved_result is None:
-                    outcome = "保存未完成"
+                    outcome = "L'enregistrement n'a pas abouti"
                 elif state.saved_result.added:
-                    outcome = "笔记已成功写入 CSV"
+                    outcome = "Les notes ont été enregistrées dans le CSV"
                 else:
-                    outcome = "本次没有新增笔记，CSV 未修改"
+                    outcome = "Aucune nouvelle note n'a été ajoutée ; le CSV n'a pas été modifié"
                 cleanup_message: str | None = None
                 try:
                     current_stat = self.lock_path.stat()
@@ -292,15 +327,19 @@ class CSVStore:
                         lock_written and self.lock_path.read_bytes() != payload
                     ):
                         cleanup_message = (
-                            f"{outcome}，但锁文件已被其他程序改变，未自动删除；"
-                            f"请确认保存程序已关闭后检查：{self.lock_path}"
+                            f"{outcome}, mais le fichier de verrouillage a été modifié "
+                            "par un autre programme et n'a pas été supprimé automatiquement. "
+                            "Assurez-vous qu'aucun programme n'enregistre ce CSV, "
+                            f"puis vérifiez ce fichier : {self.lock_path}"
                         )
                     else:
                         self.lock_path.unlink()
                 except OSError as exc:
                     cleanup_message = (
-                        f"{outcome}，但无法清理锁文件：{self.lock_path}。"
-                        f"请确认保存程序已关闭后手动删除。原因：{exc}"
+                        f"{outcome}, mais le fichier de verrouillage ne peut pas être "
+                        f"supprimé : {self.lock_path}. Vérifiez qu'aucun programme "
+                        "n'enregistre ce CSV avant de le supprimer manuellement. "
+                        f"Détail : {exc}"
                     )
                 if cleanup_message is not None:
                     if pending_error is None:
@@ -308,7 +347,7 @@ class CSVStore:
                     if isinstance(pending_error, (StoreError, ValueError)):
                         # Preserve the original failure and its cause.  Cleanup
                         # diagnostics must not replace the reason saving failed.
-                        pending_error.args = (f"{pending_error}\n此外，{cleanup_message}",)
+                        pending_error.args = (f"{pending_error}\nAutre problème : {cleanup_message}",)
                     elif hasattr(pending_error, "add_note"):
                         pending_error.add_note(cleanup_message)
 
@@ -353,14 +392,14 @@ class CSVStore:
         skipped = 0
         for candidate in candidates:
             if not isinstance(candidate, Candidate):
-                raise ValueError("待保存内容必须来自笔记预览。")
+                raise ValueError("Les données à enregistrer doivent provenir de l'aperçu des notes.")
             if candidate.status not in _CANDIDATE_STATUSES:
-                raise ValueError("预览状态无效，请重新预览后保存。")
+                raise ValueError("L'état de l'aperçu est invalide. Actualisez l'aperçu avant d'enregistrer.")
             if candidate.status != "new":
                 skipped += 1
                 continue
             if candidate.category not in CATEGORIES:
-                raise ValueError("笔记分类必须为 word 或 sentence。")
+                raise ValueError("La catégorie de la note doit être « word » ou « sentence ».")
             prepared.append((_valid_french(candidate.french), candidate.category))
 
         # Even a no-op checks the file's format, but creates no lock, directories,

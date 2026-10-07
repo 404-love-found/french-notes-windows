@@ -119,6 +119,9 @@ def run_self_test(folder: Path) -> int:
         update_root()
         _require(app.store.path == csv_path, "The interface did not use the explicit test CSV.")
         _require(len(app.notes) == 4 and len(app.library_tree.get_children()) == 4, "The interface did not load the saved library.")
+        _require("Notes de français" in root.title(), "The interface window title is not in French.")
+        categories = {app.library_tree.item(item, "values")[0] for item in app.library_tree.get_children()}
+        _require(categories == {"Mot", "Phrase"}, "The library categories are not displayed in French.")
         _require(root.state() == "withdrawn", "Self-test exposed its application window.")
         result["checks"].append("tk_interface_and_existing_library")
 
@@ -150,7 +153,8 @@ def run_self_test(folder: Path) -> int:
         paragraphs = [paragraph.text for paragraph in parsed_document.paragraphs]
         exported_notes = [paragraph.split("\t", 1)[1] for paragraph in paragraphs if "\t" in paragraph]
         _require(sorted(exported_notes) == sorted(note.french for note in notes), "Word export did not preserve every French note exactly once.")
-        _require("单词" in paragraphs and "句子" in paragraphs, "Word export is missing category headings.")
+        _require("Notes de français" in paragraphs, "Le titre de l’export Word est absent.")
+        _require("Mots" in paragraphs and "Phrases" in paragraphs, "Les titres des catégories sont absents de l’export Word.")
         result["checks"].append("docx_export_and_parse")
         result["success"] = True
     except Exception as error:

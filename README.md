@@ -2,14 +2,14 @@
 
 ![Windows build](https://github.com/404-love-found/french-notes-windows/actions/workflows/windows.yml/badge.svg)
 
-这是一个本机桌面工具。每行输入一个法语单词或一句话，完成输入后与当前 CSV 对比，只录入尚未保存的内容。所有笔记保存在 CSV 文件中，可按单词、句子分组导出为 Word `.docx`。
+这是一个全法语界面的本机桌面工具。每行输入一个法语单词或一句话，完成输入后与当前 CSV 对比，只录入尚未保存的内容。所有笔记保存在 CSV 文件中，可按单词、句子分组导出为 Word `.docx`。
 
 ## 在 Windows 上使用
 
 在 [Releases 下载页](https://github.com/404-love-found/french-notes-windows/releases/latest) 获取 Windows 64 位版本：
 
-- **安装版：**下载 `FrenchNotes-Setup-0.1.0.exe`，双击安装后从开始菜单或桌面快捷方式启动。
-- **免安装版：**下载 `FrenchNotes-0.1.0-Windows-x64.zip`，解压后双击 `FrenchNotes.exe`。
+- **安装版：**下载 `FrenchNotes-Setup-0.1.1.exe`，双击安装后从开始菜单或桌面快捷方式启动。
+- **免安装版：**下载 `FrenchNotes-0.1.1-Windows-x64.zip`，解压后双击 `FrenchNotes.exe`。
 
 这两个版本均已包含 Python 和 Word 导出依赖。录入、查阅、去重和导出均可离线进行，不需要在电脑上安装 Python 或 Word。数据位于当前用户的本机应用数据目录；卸载程序不会删除 CSV 笔记。
 
@@ -24,14 +24,14 @@
 
 ### 操作流程
 
-1. 在「批量录入」中输入或粘贴多行法语，每个非空行是一条笔记。
-2. 点击「分析与去重」，查看每条内容的分类和结果。
-3. 若分类不合适，选中新增项，点击「设为单词」或「设为句子」。可以多选。
-4. 点击「录入新内容」，只把新增项保存到当前 CSV。保存成功后输入区清空；失败时保留输入。
-5. 在「已保存笔记」中搜索、按分类筛选、双击查看全文。
-6. 点击「导出全部为 Word」，选择本机 `.docx` 路径。导出包含当前 CSV 的所有笔记，不受列表搜索或筛选影响，也不包含未保存的输入。
+1. 在「Saisie par lot」中输入或粘贴多行法语，每个非空行是一条笔记。
+2. 点击「Analyser」，查看每条内容的分类和结果。
+3. 若分类不合适，选中新增项，点击「Mot」或「Phrase」。可以多选。
+4. 点击「Enregistrer les nouvelles notes」，只把新增项保存到当前 CSV。保存成功后输入区清空；失败时保留输入。
+5. 在「Notes enregistrées」中搜索、按分类筛选、双击查看全文。
+6. 点击「Tout exporter vers Word」，选择本机 `.docx` 路径。导出包含当前 CSV 的所有笔记，不受列表搜索或筛选影响，也不包含未保存的输入。
 
-输入期间不会修改 CSV。全部输入都已存在时，应用显示「没有新内容」，不写入 CSV。再次打开应用会读取同一份 CSV。
+输入期间不会修改 CSV。全部输入都已存在时，应用显示「Aucune nouvelle note」，不写入 CSV。再次打开应用会读取同一份 CSV。
 
 ## 已确认的比较规则
 
@@ -66,7 +66,7 @@ Windows 默认保存路径：
 %LOCALAPPDATA%\FrenchNotes\notes.csv
 ```
 
-应用顶部显示当前路径。「选择 CSV」可切换到同格式的已有 CSV，或指定一个尚未存在的新文件。「打开文件夹」可查看本机文件。为了保持数据仅在本机，选择文件时应使用本机文件夹；若自行放在 OneDrive 等同步目录中，同步由该软件控制。
+应用顶部显示当前路径。「Choisir un CSV」可切换到同格式的已有 CSV，或指定一个尚未存在的新文件。「Ouvrir le dossier」可查看本机文件。为了保持数据仅在本机，选择文件时应使用本机文件夹；若自行放在 OneDrive 等同步目录中，同步由该软件控制。
 
 CSV 使用 UTF-8 BOM 和标准 CSV 引号规则，支持法语重音、中文、逗号、引号及字段内换行。字段为：
 
@@ -104,4 +104,4 @@ python -m french_notes
 
 UI 测试需要可用的桌面显示环境和 Tk；核心 CSV 测试可独立运行。Word 测试需要安装 `requirements.txt`。
 
-测试覆盖比较规则、CSV 安全保存、分类修正、界面录入流程、打包自检和 Word 导出。示例 Word 已渲染并检查中文标题、法语重音和长句换行。Windows 构建结果以本仓库 Actions 状态为准。
+测试覆盖比较规则、CSV 安全保存、分类修正、界面录入流程、打包自检和 Word 导出。示例 Word 已渲染并检查法语标题、重音和长句换行。Windows 构建结果以本仓库 Actions 状态为准。

@@ -159,14 +159,14 @@ jobs:
             "README-windows.txt"
           )
           cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
-          Windows 10/11 x64 本地法语笔记软件，运行时无需安装 Python。
+          Logiciel de notes de français hors ligne pour Windows 10/11 x64. Aucune installation de Python n'est nécessaire.
 
-          - 安装版：下载 `FrenchNotes-Setup-*.exe`，安装后使用开始菜单或桌面快捷方式。
-          - 免安装版：下载 `FrenchNotes-*-Windows-x64.zip`，解压后运行 `FrenchNotes.exe`。
-          - 默认 CSV 数据存放在 `%LOCALAPPDATA%\FrenchNotes\notes.csv`，卸载时保留。
-          - 每行录入一条，自动分类和去重；导出为本地 Word `.docx`。
+          - Version installable : téléchargez `FrenchNotes-Setup-*.exe`, puis ouvrez le logiciel depuis le menu Démarrer ou le bureau.
+          - Version sans installation : téléchargez `FrenchNotes-*-Windows-x64.zip`, extrayez son contenu, puis lancez `FrenchNotes.exe`.
+          - Le fichier CSV est enregistré par défaut dans `%LOCALAPPDATA%\FrenchNotes\notes.csv` et conservé lors de la désinstallation.
+          - Saisissez un élément par ligne, vérifiez la classification automatique, évitez les doublons et exportez vers un fichier Word local `.docx`.
 
-          Windows 构建已通过单元测试、实际 EXE 自检以及安装/卸载验证。文件校验值见 `SHA256SUMS.txt`。本版本尚未数字签名。
+          Cette version Windows a passé les tests unitaires, l'autotest du programme EXE et les vérifications d'installation et de désinstallation. Les empreintes des fichiers figurent dans `SHA256SUMS.txt`. Cette version ne dispose pas encore d'une signature numérique.
           NOTES
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GH_REPO" --clobber

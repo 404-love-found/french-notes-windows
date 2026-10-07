@@ -9,9 +9,9 @@ from . import __version__
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Local French notes with CSV storage and Word export")
+    parser = argparse.ArgumentParser(description="Notes de français avec stockage CSV local et export Word")
     parser.add_argument("--version", action="version", version=f"FrenchNotes {__version__}")
-    parser.add_argument("--self-test", metavar="NEW_DIRECTORY", type=Path, help="Validate the packaged app in a new temporary directory")
+    parser.add_argument("--self-test", metavar="NOUVEAU_DOSSIER", type=Path, help="Vérifier l’application dans un nouveau dossier temporaire")
     args = parser.parse_args(argv)
     if args.self_test is not None:
         from .smoke import run_self_test

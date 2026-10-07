@@ -43,10 +43,10 @@ def collect(output: Path) -> None:
         for source in tcl_folder.rglob("license.terms"):
             shutil.copyfile(source, python_folder / (source.parent.name + "-license.terms"))
     (output / "README.txt").write_text(
-        "FrenchNotes third-party software notices\n\n"
+        "FrenchNotes — Licences des logiciels tiers\n\n"
         + f"Python {sys.version.split()[0]}\n"
         + "\n".join(summaries)
-        + "\n\nLicense texts retain the terms and attribution of their respective authors.\n",
+        + "\n\nLes textes des licences conservent les conditions et les mentions de leurs auteurs respectifs.\n",
         encoding="utf-8",
     )
 

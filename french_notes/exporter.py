@@ -21,15 +21,16 @@ def export_docx(notes: Sequence[Note], path: Path) -> Path:
     """
     path = Path(path)
     if path.suffix.lower() != ".docx":
-        raise ValueError("Word 导出文件必须使用 .docx 扩展名。")
+        raise ValueError("Le fichier Word exporté doit porter l’extension .docx.")
     records = tuple(notes)
     if not records:
-        raise ValueError("没有可导出的笔记。")
+        raise ValueError("Aucune note à exporter.")
     if any(note.category not in {"word", "sentence"} for note in records):
-        raise ValueError("笔记分类必须为 word 或 sentence。")
+        raise ValueError("Chaque note doit appartenir à la catégorie « mot » ou « phrase ».")
 
     # Keep CSV reading and deduplication usable without the optional exporter.
     from docx import Document
+    from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
     from docx.shared import Cm, Pt, RGBColor
 
@@ -52,6 +53,11 @@ def export_docx(notes: Sequence[Note], path: Path) -> Path:
         # Theme formatting must not override the deliberately chosen fonts.
         for attribute in ("asciiTheme", "hAnsiTheme", "eastAsiaTheme"):
             fonts.attrib.pop(qn(f"w:{attribute}"), None)
+        language = run_properties.find(qn("w:lang"))
+        if language is None:
+            language = OxmlElement("w:lang")
+            run_properties.append(language)
+        language.set(qn("w:val"), "fr-FR")
         color = run_properties.find(qn("w:color"))
         if color is not None:
             for attribute in ("themeColor", "themeTint", "themeShade"):
@@ -73,19 +79,24 @@ def export_docx(notes: Sequence[Note], path: Path) -> Path:
     document.styles["Heading 1"].paragraph_format.space_before = Pt(12)
     document.styles["Heading 1"].paragraph_format.space_after = Pt(6)
 
+    words = [note for note in records if note.category == "word"]
+    sentences = [note for note in records if note.category == "sentence"]
     groups = (
-        ("单词", [note for note in records if note.category == "word"]),
-        ("句子", [note for note in records if note.category == "sentence"]),
+        ("Mots", words, "Aucun mot enregistré."),
+        ("Phrases", sentences, "Aucune phrase enregistrée."),
     )
-    document.add_paragraph("法语笔记", style="Title")
+    note_label = "note enregistrée" if len(records) == 1 else "notes enregistrées"
+    word_label = "mot" if len(words) < 2 else "mots"
+    sentence_label = "phrase" if len(sentences) < 2 else "phrases"
+    document.add_paragraph("Notes de français", style="Title")
     document.add_paragraph(
-        f"共 {len(records)} 条笔记，其中单词 {len(groups[0][1])} 条，"
-        f"句子 {len(groups[1][1])} 条。以下按类别列出已保存的法语内容。"
+        f"{len(records)} {note_label} : {len(words)} {word_label} et "
+        f"{len(sentences)} {sentence_label}. Le contenu est regroupé par catégorie."
     )
-    for heading, group in groups:
+    for heading, group, empty_message in groups:
         document.add_heading(heading, level=1)
         if not group:
-            document.add_paragraph("暂无记录。")
+            document.add_paragraph(empty_message)
             continue
         for number, note in enumerate(group, start=1):
             paragraph = document.add_paragraph()

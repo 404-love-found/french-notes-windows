@@ -9,7 +9,7 @@ param(
 # ASCII source works in Windows PowerShell 5.1 as well as PowerShell 7.
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = "Stop"
-$AppVersion = "0.1.0"
+$AppVersion = "0.1.1"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 
 function Find-InnoSetup {
