@@ -1,6 +1,7 @@
 """End-to-end desktop flows against a temporary local CSV."""
 
 from pathlib import Path
+import sys
 import tempfile
 import tkinter as tk
 import unittest
@@ -18,6 +19,8 @@ class DesktopFlowTests(unittest.TestCase):
         try:
             self.root = tk.Tk()
         except tk.TclError as error:
+            if sys.platform == "win32":
+                raise
             self.skipTest(f"Desktop display unavailable: {error}")
         self.root.withdraw()
         self.addCleanup(self.root.destroy)
@@ -70,15 +73,23 @@ class DesktopFlowTests(unittest.TestCase):
         self.assertFalse(self.path.exists())
 
     def test_save_and_export_buttons_fit_default_and_minimum_windows(self):
+        # Windows does not lay out a withdrawn toplevel. Map a transparent test
+        # window so the actual geometry is calculated without obscuring the desktop.
+        self.root.attributes("-alpha", 0.0)
+        self.root.deiconify()
+        self.root.update()
+
         def check_bounds():
             self.app.notebook.select(self.app.intake_tab)
             for width, height in ((1180, 760), (1024, 640)):
                 self.root.geometry(f"{width}x{height}")
                 self.root.update()
+                self.assertEqual((self.root.winfo_width(), self.root.winfo_height()), (width, height))
                 for button in (self.app.save_button, self.app.export_button):
                     with self.subTest(size=(width, height), button=button.cget("text")):
-                        # Withdrawn windows still calculate geometry. Checking
-                        # mapped widgets would skip every widget and miss this bug.
+                        # Assert mapping as well as bounds; filtering unmapped
+                        # widgets would silently omit controls hidden by the layout.
+                        self.assertTrue(button.winfo_ismapped())
                         self.assertGreaterEqual(button.winfo_width(), button.winfo_reqwidth())
                         self.assertGreaterEqual(button.winfo_height(), button.winfo_reqheight())
                         x = button.winfo_rootx() - self.root.winfo_rootx()

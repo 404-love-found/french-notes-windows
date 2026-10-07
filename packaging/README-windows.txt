@@ -1,14 +1,14 @@
-FrenchNotes 0.1.2 — Notes de français hors ligne pour Windows
+FrenchNotes 0.1.3 — Notes de français hors ligne pour Windows
 
 Systèmes compatibles : Windows 10 / 11, 64 bits (x64).
 Aucune installation de Python n'est nécessaire pour utiliser le logiciel.
 L'interface est entièrement en français. Vos fichiers CSV et Word restent sur votre ordinateur.
 
 Démarrage
-1. Version installable : lancez FrenchNotes-Setup-0.1.2.exe et suivez l'assistant.
+1. Version installable : lancez FrenchNotes-Setup-0.1.3.exe et suivez l'assistant.
    L'installation concerne uniquement votre compte et ne demande normalement pas de droits administrateur.
    Ouvrez ensuite FrenchNotes depuis le menu Démarrer ou le raccourci du bureau.
-2. Version sans installation : extrayez FrenchNotes-0.1.2-Windows-x64.zip, puis ouvrez FrenchNotes.exe.
+2. Version sans installation : extrayez FrenchNotes-0.1.3-Windows-x64.zip, puis ouvrez FrenchNotes.exe.
    Conservez le dossier licenses avec le programme ; il contient les licences des logiciels tiers.
 
 Saisie et exportation
