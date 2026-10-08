@@ -100,6 +100,10 @@ def run_self_test(folder: Path) -> int:
         from .ui import FrenchNotesApp
 
         class SelfTestApp(FrenchNotesApp):
+            def _read_settings(self) -> dict:
+                # Self-test must not read or change the user's preferences.
+                return {}
+
             def _error(self, title: str, error: Exception) -> None:
                 # The production method opens a modal dialog.  Convert the same
                 # error to an exception so an unattended build cannot hang.
@@ -109,7 +113,7 @@ def run_self_test(folder: Path) -> int:
         root = tk.Tk()
         root.withdraw()
         root.report_callback_exception = lambda _kind, error, _tb: callback_errors.append(error)
-        app = SelfTestApp(root, csv_path=csv_path)
+        app = SelfTestApp(root, csv_path=csv_path, language="fr")
 
         def update_root() -> None:
             root.update()
@@ -135,6 +139,20 @@ def run_self_test(folder: Path) -> int:
         app.set_category("word")
         update_root()
         _require(app.candidates[1].category == "word", "Manual UI category correction failed.")
+        from .i18n import BRAND
+
+        input_before = app.input.get("1.0", "end-1c")
+        candidate_before = [(item.french, item.category, item.status) for item in app.candidates]
+        for language, title in (("zh", "法语笔记"), ("en", "French Notes"), ("fr", "Notes de français")):
+            app.set_language(language, persist=False)
+            update_root()
+            _require(title in root.title(), "Language switch did not translate the window title.")
+            _require(app.input.get("1.0", "end-1c") == input_before, "Language switch changed unsaved input.")
+            _require([(item.french, item.category, item.status) for item in app.candidates] == candidate_before, "Language switch changed preview/category state.")
+            _require(app.preview_tree.selection() == ("1",), "Language switch lost the selected candidate.")
+            _require("disabled" not in app.save_button.state(), "Language switch disabled a valid save.")
+            _require(app.brand_label.cget("text") == BRAND, "The company watermark is missing.")
+        result["checks"].append("tk_language_switch_preserves_input")
         # Use the real store directly to avoid save dialogs even on unusual
         # filesystem failures (for example, lock cleanup failure).
         ui_saved = app.store.append(app.candidates)
@@ -144,6 +162,7 @@ def run_self_test(folder: Path) -> int:
         notes = CSVStore(csv_path).load()
         _require(len(notes) == 6 and len(app.library_tree.get_children()) == 6, "The saved UI batch was not reloaded.")
         _require(next(note for note in notes if note.french == "pomme de terre").category == "word", "Manual category was not persisted.")
+        _require(not store.backup_path.exists(), "A successful update retained an old CSV backup.")
         result["checks"].append("tk_analysis_and_manual_category")
 
         output_path = export_docx(notes, folder / "notes.docx")
@@ -156,6 +175,13 @@ def run_self_test(folder: Path) -> int:
         _require("Notes de français" in paragraphs, "Le titre de l’export Word est absent.")
         _require("Mots" in paragraphs and "Phrases" in paragraphs, "Les titres des catégories sont absents de l’export Word.")
         result["checks"].append("docx_export_and_parse")
+        for language, title, headings in (("en", "French Notes", ("Words", "Sentences")), ("zh", "法语笔记", ("单词", "句子"))):
+            translated_path = export_docx(notes, folder / f"notes-{language}.docx", language=language)
+            translated = [paragraph.text for paragraph in Document(translated_path).paragraphs]
+            _require(title in translated and all(heading in translated for heading in headings), "Word export labels did not follow the selected language.")
+            translated_notes = [paragraph.split("\t", 1)[1] for paragraph in translated if "\t" in paragraph]
+            _require(sorted(translated_notes) == sorted(note.french for note in notes), "A translated Word export changed the French notes.")
+        result["checks"].append("docx_multilingual_labels")
         result["success"] = True
     except Exception as error:
         result["error"] = str(error)

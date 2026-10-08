@@ -165,6 +165,9 @@ jobs:
           - Version sans installation : téléchargez `FrenchNotes-*-Windows-x64.zip`, extrayez son contenu, puis lancez `FrenchNotes.exe`.
           - Le fichier CSV est enregistré par défaut dans `%LOCALAPPDATA%\FrenchNotes\notes.csv` et conservé lors de la désinstallation.
           - Saisissez un élément par ligne, vérifiez la classification automatique, évitez les doublons et exportez vers un fichier Word local `.docx`.
+          - Changez instantanément la langue de l'interface : 中文, English ou Français. Les titres de l'export Word suivent ce choix, sans traduire vos notes.
+          - Chaque mise à jour conserve les anciennes notes et remplace le CSV actuel. L'ancienne sauvegarde de ce CSV est supprimée uniquement après un enregistrement réussi.
+          - Interface simplifiée avec la mention ZIRELTON TECHNOLOGIES INC.
 
           Cette version Windows a passé les tests unitaires, l'autotest du programme EXE et les vérifications d'installation et de désinstallation. Les empreintes des fichiers figurent dans `SHA256SUMS.txt`. Cette version ne dispose pas encore d'une signature numérique.
           NOTES

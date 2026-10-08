@@ -1,27 +1,36 @@
-FrenchNotes 0.1.4 — Notes de français hors ligne pour Windows
+FrenchNotes 0.2.0 — Notes de français hors ligne pour Windows
 
 Systèmes compatibles : Windows 10 / 11, 64 bits (x64).
 Aucune installation de Python n'est nécessaire pour utiliser le logiciel.
-L'interface est entièrement en français. Vos fichiers CSV et Word restent sur votre ordinateur.
+L'interface propose 中文, English et Français. Le français est la langue par défaut au premier démarrage.
+Changez de langue depuis la liste en haut de la fenêtre : le changement est immédiat et mémorisé.
+Vos fichiers CSV et Word restent sur votre ordinateur.
+La mention ZIRELTON TECHNOLOGIES INC. apparaît en bas de l'interface ; elle n'est pas ajoutée aux notes ni aux documents Word.
 
 Démarrage
-1. Version installable : lancez FrenchNotes-Setup-0.1.4.exe et suivez l'assistant.
+1. Version installable : lancez FrenchNotes-Setup-0.2.0.exe et suivez l'assistant.
    L'installation concerne uniquement votre compte et ne demande normalement pas de droits administrateur.
    Ouvrez ensuite FrenchNotes depuis le menu Démarrer ou le raccourci du bureau.
-2. Version sans installation : extrayez FrenchNotes-0.1.4-Windows-x64.zip, puis ouvrez FrenchNotes.exe.
+2. Version sans installation : extrayez FrenchNotes-0.2.0-Windows-x64.zip, puis ouvrez FrenchNotes.exe.
    Conservez le dossier licenses avec le programme ; il contient les licences des logiciels tiers.
+L'assistant d'installation propose Français et English. Le chinois simplifié est inclus si son fichier
+de langue est présent dans le paquet officiel du compilateur Inno Setup utilisé pour la compilation.
+La langue de l'assistant est indépendante de celle de l'application, qui propose toujours les trois langues.
 
 Saisie et exportation
+Les noms des boutons ci-dessous correspondent à l'interface française.
 1. Dans l'onglet « Saisie par lot », saisissez un mot ou une phrase en français par ligne.
 2. Cliquez sur « Analyser » et vérifiez la catégorie proposée.
-   Utilisez « Classer la sélection » pour corriger manuellement la catégorie : « Mot » ou « Phrase ».
+   Sélectionnez une nouvelle note et utilisez « Mot » ou « Phrase » pour corriger sa catégorie.
    « À ajouter » désigne une nouvelle note ; « Déjà dans le CSV » désigne une note déjà enregistrée.
    « Doublon du lot » désigne une répétition dans la saisie.
 3. Cliquez sur « Enregistrer les nouvelles notes » pour enregistrer uniquement les éléments absents du CSV
    et éviter les doublons dans la saisie en cours.
    Retrouvez les notes sauvegardées dans l'onglet « Notes enregistrées ».
-4. Cliquez sur « Tout exporter vers Word » pour exporter toutes les notes enregistrées,
+4. Cliquez sur « Exporter Word » pour exporter toutes les notes enregistrées,
    regroupées par catégorie, dans un fichier local .docx.
+   Le titre, les catégories et les explications suivent la langue actuelle de l'interface.
+   Le contenu des notes est conservé tel qu'il est enregistré : aucun texte n'est traduit automatiquement.
    Ouvrez ce fichier avec Microsoft Word ou un autre logiciel compatible avec le format .docx.
 
 Détection des doublons
@@ -32,11 +41,19 @@ La classification utilise des règles locales ; vous pouvez ajuster la catégori
 Emplacement des données
 CSV par défaut : %LOCALAPPDATA%\FrenchNotes\notes.csv
 Préférences : %LOCALAPPDATA%\FrenchNotes\settings.json
+Les préférences mémorisent le CSV choisi et la langue de l'interface ; elles ne contiennent pas vos notes.
 Cliquez sur « Choisir un CSV » pour utiliser un autre fichier local.
 Cliquez sur « Ouvrir le dossier » pour accéder au dossier de votre CSV.
+Choisir un autre CSV n'efface pas les fichiers des autres bibliothèques.
 La version sans installation utilise aussi le dossier de données par défaut indiqué ci-dessus.
 Les documents Word sont enregistrés à l'emplacement choisi lors de l'exportation.
 Une mise à jour ou une désinstallation conserve vos notes.
+Chaque enregistrement conserve l'historique et ajoute uniquement les nouvelles notes distinctes.
+Le CSV est remplacé de manière atomique après préparation d'un fichier temporaire dans le même dossier.
+Aucune nouvelle sauvegarde .bak n'est créée. Seule l'ancienne sauvegarde de ce CSV, par exemple notes.csv.bak,
+est supprimée après un remplacement réussi qui ajoute des notes. Les sauvegardes des autres CSV restent intactes.
+Sans nouvelles notes, le CSV et l'ancienne sauvegarde restent inchangés.
+Si l'écriture du CSV échoue, le fichier existant et son ancienne sauvegarde sont conservés.
 Sauvegardez vos fichiers CSV et Word importants avant de supprimer le logiciel.
 
 Vérification des fichiers

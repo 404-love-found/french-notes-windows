@@ -127,6 +127,101 @@ class ExporterTests(unittest.TestCase):
             "2 notes enregistrées : 1 mot et 1 phrase. Le contenu est regroupé par catégorie.",
         )
 
+    def test_selected_language_changes_labels_and_preserves_french_content(self) -> None:
+        expected = {
+            "fr": (
+                "Notes de français", "Mots", "Phrases", "fr-FR",
+                "4 notes enregistrées : 2 mots et 2 phrases. Le contenu est regroupé par catégorie.",
+            ),
+            "en": (
+                "French Notes", "Words", "Sentences", "en-US",
+                "4 saved notes: 2 words and 2 sentences. Notes are grouped by category.",
+            ),
+            "zh": (
+                "法语笔记", "单词", "句子", "zh-CN",
+                "共 4 条笔记，其中单词 2 条，句子 2 条。以下按类别列出已保存的法语内容。",
+            ),
+        }
+        for language, (title, words, sentences, locale, summary) in expected.items():
+            with self.subTest(language=language):
+                export_docx(self.notes, self.path, language=language)
+                paragraphs = self.xml().findall("./w:body/w:p", NS)
+                texts = [paragraph_text(paragraph) for paragraph in paragraphs]
+                self.assertEqual(texts[:3], [title, summary, words])
+                self.assertEqual(texts[5], sentences)
+                self.assertEqual(
+                    [text.split("\t", 1)[1] for text in texts if "\t" in text],
+                    [self.notes[index].french for index in (1, 2, 0, 3)],
+                )
+                for style_id in ("Normal", "Title", "Heading1"):
+                    style = self.xml("word/styles.xml").find(f"w:style[@w:styleId='{style_id}']", NS)
+                    self.assertEqual(style.find("w:rPr/w:lang", NS).get(W + "val"), locale)
+                for paragraph in paragraphs:
+                    if "\t" in paragraph_text(paragraph):
+                        content_run = paragraph.findall("w:r", NS)[-1]
+                        self.assertEqual(content_run.find("w:rPr/w:lang", NS).get(W + "val"), "fr-FR")
+
+    def test_english_counts_use_singular_only_for_one(self) -> None:
+        cases = (
+            ([self.notes[1]], "1 saved note: 1 word and 0 sentences. Notes are grouped by category.", "No saved sentences."),
+            ([self.notes[0]], "1 saved note: 0 words and 1 sentence. Notes are grouped by category.", "No saved words."),
+            (self.notes[:2], "2 saved notes: 1 word and 1 sentence. Notes are grouped by category.", None),
+        )
+        for notes, expected_summary, empty_message in cases:
+            with self.subTest(expected_summary=expected_summary):
+                export_docx(notes, self.path, language="en")
+                texts = [paragraph_text(paragraph) for paragraph in self.xml().findall("./w:body/w:p", NS)]
+                self.assertEqual(texts[1], expected_summary)
+                if empty_message:
+                    self.assertIn(empty_message, texts)
+
+    def test_chinese_empty_categories_and_counts(self) -> None:
+        cases = (
+            ([self.notes[1]], "共 1 条笔记，其中单词 1 条，句子 0 条。以下按类别列出已保存的法语内容。", "暂无句子记录。"),
+            ([self.notes[0]], "共 1 条笔记，其中单词 0 条，句子 1 条。以下按类别列出已保存的法语内容。", "暂无单词记录。"),
+        )
+        for notes, expected_summary, empty_message in cases:
+            with self.subTest(empty_message=empty_message):
+                export_docx(notes, self.path, language="zh")
+                texts = [paragraph_text(paragraph) for paragraph in self.xml().findall("./w:body/w:p", NS)]
+                self.assertEqual(texts[1], expected_summary)
+                self.assertIn(empty_message, texts)
+
+    def test_localized_validation_errors_preserve_existing_files(self) -> None:
+        messages = {
+            "en": (
+                "There are no notes to export.",
+                "Each note must belong to the word or sentence category.",
+                "The exported Word file must use the .docx extension.",
+            ),
+            "zh": (
+                "没有可导出的笔记。",
+                "每条笔记必须归入单词或句子类别。",
+                "导出的 Word 文件必须使用 .docx 扩展名。",
+            ),
+        }
+        invalid_note = Note("invalid", "unknown", "café", "2026-10-07T12:00:00")
+        csv_path = self.root / "notes.csv"
+        for language, (empty_error, category_error, extension_error) in messages.items():
+            for notes, path, message in (
+                ([], self.path, empty_error),
+                ([invalid_note], self.path, category_error),
+                (self.notes, csv_path, extension_error),
+            ):
+                with self.subTest(language=language, message=message):
+                    path.write_bytes(b"original file")
+                    with self.assertRaises(ValueError) as error:
+                        export_docx(notes, path, language=language)
+                    self.assertEqual(str(error.exception), message)
+                    self.assertEqual(path.read_bytes(), b"original file")
+
+    def test_unsupported_language_preserves_existing_document(self) -> None:
+        self.path.write_bytes(b"original document")
+        with self.assertRaisesRegex(ValueError, "Unsupported document language"):
+            export_docx(self.notes, self.path, language="de")
+        self.assertEqual(self.path.read_bytes(), b"original document")
+        self.assertEqual(list(self.root.iterdir()), [self.path])
+
     def test_empty_notes_leave_existing_document_untouched(self) -> None:
         self.path.write_bytes(b"original document")
         with self.assertRaisesRegex(ValueError, "Aucune note à exporter"):

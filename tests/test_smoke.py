@@ -57,8 +57,10 @@ class SelfTestTests(unittest.TestCase):
                 "csv_reload_and_unicode",
                 "duplicate_batch_preserves_csv",
                 "tk_interface_and_existing_library",
+                "tk_language_switch_preserves_input",
                 "tk_analysis_and_manual_category",
                 "docx_export_and_parse",
+                "docx_multilingual_labels",
             ],
         )
         self.assertNotIn("error", report)

@@ -19,23 +19,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
+from .errors import Message, StoreError, ValidationError
+
 
 CATEGORIES = ("word", "sentence")
 CSV_HEADER = ("id", "category", "french", "created_at")
 _STAT_FIELDS = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
 _SENTENCE_PUNCTUATION = frozenset(".,;:!?…。！？；：，")
 _CANDIDATE_STATUSES = frozenset(("new", "existing", "batch"))
-
-
-class StoreError(Exception):
-    """A storage problem whose message can be displayed directly to the user."""
-
-    def __init__(self, message: str, *, saved_result: SaveResult | None = None):
-        super().__init__(message)
-        # A cleanup problem after a successful commit is distinguishable from
-        # a save failure, so callers can report the real outcome without asking
-        # the user to resubmit notes that are already on disk.
-        self.saved_result = saved_result
 
 
 @dataclass
@@ -73,13 +64,10 @@ class _LockState:
 def clean_text(text: str) -> str:
     """Use NFC and one space per whitespace run, preserving case and punctuation."""
     if not isinstance(text, str):
-        raise ValueError("Le contenu en français doit être du texte.")
+        raise ValidationError(key="content_text_required")
     for char in text:
         if unicodedata.category(char) in ("Cc", "Cs") and char not in "\t\r\n":
-            raise ValueError(
-                "Le contenu contient des caractères de contrôle non pris en charge. "
-                "Supprimez-les, puis réessayez."
-            )
+            raise ValidationError(key="unsupported_control")
     return " ".join(unicodedata.normalize("NFC", text).split())
 
 
@@ -91,12 +79,9 @@ def normalize_key(text: str) -> str:
 def _valid_french(text: str) -> str:
     cleaned = clean_text(text)
     if not cleaned:
-        raise ValueError("Le contenu en français ne peut pas être vide.")
+        raise ValidationError(key="content_empty")
     if not any(char.isalpha() for char in cleaned):
-        raise ValueError(
-            "Chaque note doit contenir au moins une lettre ; "
-            "les nombres ou la ponctuation seuls ne suffisent pas."
-        )
+        raise ValidationError(key="letter_required")
     return cleaned
 
 
@@ -118,7 +103,7 @@ def _signature(stat_result: os.stat_result) -> tuple[int, ...]:
 
 
 class CSVStore:
-    """Read, preview, and atomically add notes to a local UTF-8 CSV file."""
+    """Keep all notes in one current CSV, adding new records atomically."""
 
     def __init__(self, path: Path):
         self.path = Path(path).expanduser().absolute()
@@ -129,10 +114,7 @@ class CSVStore:
         path_observed = False
         try:
             if self.path.is_symlink():
-                raise StoreError(
-                    "Le chemin du CSV est un lien symbolique. "
-                    "Sélectionnez le fichier CSV réel."
-                )
+                raise StoreError(key="csv_symlink")
             before_path = _signature(self.path.stat())
             path_observed = True
             with self.path.open("rb") as source:
@@ -144,23 +126,17 @@ class CSVStore:
             # A file disappearing midway through reading is a concurrent edit,
             # not an empty store.  Only the initial path query may mean absence.
             if path_observed:
-                raise StoreError(
-                    "Le fichier CSV a changé pendant sa lecture. "
-                    "Actualisez l'aperçu, puis réessayez."
-                ) from None
+                raise StoreError(key="csv_changed_during_read") from None
             return _Snapshot(None, None)
         except OSError as exc:
-            raise StoreError(f"Impossible de lire le fichier CSV : {exc}") from exc
+            raise StoreError(key="csv_read_failed", params={"detail": exc}) from exc
         # Compare each API with itself.  On Windows Python 3.12, path stat()
         # keeps creation time in st_ctime, while fstat() can report ChangeTime.
         # Comparing those signatures directly falsely flags atomic replacements.
         # Path queries still detect replacement; fd queries detect edits during
         # the read.  Save-time checks also compare the complete snapshot bytes.
         if before_fd != after_fd or before_path != after_path:
-            raise StoreError(
-                "Le fichier CSV a changé pendant sa lecture. "
-                "Actualisez l'aperçu, puis réessayez."
-            )
+            raise StoreError(key="csv_changed_during_read")
         return _Snapshot(data, after_path)
 
     def _parse_snapshot(self, snapshot: _Snapshot) -> list[Note]:
@@ -169,10 +145,7 @@ class CSVStore:
         try:
             decoded = snapshot.data.decode("utf-8-sig")
         except UnicodeDecodeError as exc:
-            raise StoreError(
-                "L'encodage du CSV est invalide. Enregistrez le fichier en UTF-8. "
-                "Le fichier d'origine n'a pas été modifié."
-            ) from exc
+            raise StoreError(key="csv_encoding") from exc
 
         notes: list[Note] = []
         ids: set[str] = set()
@@ -180,48 +153,37 @@ class CSVStore:
             reader = csv.reader(io.StringIO(decoded, newline=""), strict=True)
             header = next(reader, None)
             if header != list(CSV_HEADER):
-                raise StoreError(
-                    "L'en-tête du CSV doit contenir, dans cet ordre : "
-                    "id,category,french,created_at. Le fichier d'origine n'a pas été modifié."
-                )
+                raise StoreError(key="csv_header")
             for row in reader:
                 line_number = reader.line_num
                 if len(row) != len(CSV_HEADER):
                     raise StoreError(
-                        f"Ligne {line_number} du CSV : nombre de champs incorrect "
-                        "(4 champs attendus). Le fichier d'origine n'a pas été modifié."
+                        key="csv_field_count", params={"line": line_number}
                     )
                 note = Note(*row)
                 try:
                     parsed_id = uuid.UUID(note.note_id)
                     if str(parsed_id) != note.note_id:
-                        raise ValueError(
-                            "L'identifiant doit être un UUID au format standard, en minuscules."
-                        )
+                        raise ValidationError(key="uuid_format")
                     if note.note_id in ids:
-                        raise ValueError("Un identifiant est présent plusieurs fois.")
+                        raise ValidationError(key="duplicate_uuid")
                     if note.category not in CATEGORIES:
-                        raise ValueError("La catégorie doit être « word » ou « sentence ».")
+                        raise ValidationError(key="category_invalid")
                     _valid_french(note.french)
                     if "T" not in note.created_at:
-                        raise ValueError(
-                            "La date de création doit inclure une date et une heure au format ISO."
-                        )
+                        raise ValidationError(key="iso_datetime_required")
                     timestamp = note.created_at
                     if timestamp.endswith("Z"):
                         timestamp = timestamp[:-1] + "+00:00"
                     datetime.fromisoformat(timestamp)
                 except (ValueError, TypeError, AttributeError) as exc:
                     raise StoreError(
-                        f"Ligne {line_number} du CSV : données invalides. "
-                        f"{exc} Le fichier d'origine n'a pas été modifié."
+                        key="csv_row_invalid", params={"line": line_number, "detail": exc}
                     ) from exc
                 ids.add(note.note_id)
                 notes.append(note)
         except csv.Error as exc:
-            raise StoreError(
-                f"Le CSV est mal formé : {exc}. Le fichier d'origine n'a pas été modifié."
-            ) from exc
+            raise StoreError(key="csv_malformed", params={"detail": exc}) from exc
         return notes
 
     def load(self) -> list[Note]:
@@ -231,7 +193,7 @@ class CSVStore:
     def preview(self, text: str) -> list[Candidate]:
         """Split input by line and identify existing and within-batch duplicates."""
         if not isinstance(text, str):
-            raise ValueError("La saisie doit être du texte.")
+            raise ValidationError(key="input_text_required")
         existing = {normalize_key(note.french) for note in self.load()}
         seen: set[str] = set()
         candidates: list[Candidate] = []
@@ -242,8 +204,8 @@ class CSVStore:
                     continue
                 category = classify(french)
             except ValueError as exc:
-                raise ValueError(
-                    f"Ligne {line_number} de la saisie : contenu invalide. {exc}"
+                raise ValidationError(
+                    key="input_line_invalid", params={"line": line_number, "detail": exc}
                 ) from exc
             key = normalize_key(french)
             if key in existing:
@@ -259,10 +221,7 @@ class CSVStore:
     def _assert_unchanged(self, expected: _Snapshot) -> None:
         actual = self._read_snapshot()
         if actual != expected:
-            raise StoreError(
-                "Le fichier CSV a été modifié par un autre programme. "
-                "Enregistrement annulé. Actualisez l'aperçu, puis réessayez."
-            )
+            raise StoreError(key="csv_external_change")
 
     @contextmanager
     def _lock(self) -> Iterator[_LockState]:
@@ -288,12 +247,7 @@ class CSVStore:
                 )
             except FileExistsError as exc:
                 raise StoreError(
-                    "Le fichier CSV est en cours d'enregistrement par une autre instance. "
-                    "Fermez les autres instances, puis réessayez. "
-                    "Si l'application s'est arrêtée de façon inattendue, vérifiez "
-                    "qu'aucun enregistrement n'est en cours avant de supprimer "
-                    "manuellement le fichier de verrouillage : "
-                    f"{self.lock_path}"
+                    key="csv_lock_exists", params={"path": self.lock_path}
                 ) from exc
             acquired = True
             with os.fdopen(descriptor, "wb") as lock_file:
@@ -306,7 +260,15 @@ class CSVStore:
             lock_written = True
             yield state
         except OSError as exc:
-            pending_error = StoreError(f"Impossible d'enregistrer le fichier CSV : {exc}")
+            pending_error = StoreError(key="csv_save_failed", params={"detail": exc})
+            raise pending_error from exc
+        except ValueError as exc:
+            if isinstance(exc, ValidationError):
+                pending_error = exc
+                raise
+            # Keep external ValueError details unchanged, while making any
+            # application cleanup diagnostic translatable as well.
+            pending_error = ValidationError(str(exc))
             raise pending_error from exc
         except BaseException as exc:
             pending_error = exc
@@ -314,42 +276,40 @@ class CSVStore:
         finally:
             if acquired:
                 if state.saved_result is None:
-                    outcome = "L'enregistrement n'a pas abouti"
+                    outcome = Message("save_outcome_failed")
                 elif state.saved_result.added:
-                    outcome = "Les notes ont été enregistrées dans le CSV"
+                    outcome = Message("save_outcome_saved")
                 else:
-                    outcome = "Aucune nouvelle note n'a été ajoutée ; le CSV n'a pas été modifié"
-                cleanup_message: str | None = None
+                    outcome = Message("save_outcome_noop")
+                cleanup_error: StoreError | None = None
                 try:
                     current_stat = self.lock_path.stat()
                     current_identity = (current_stat.st_dev, current_stat.st_ino)
                     if current_identity != lock_identity or (
                         lock_written and self.lock_path.read_bytes() != payload
                     ):
-                        cleanup_message = (
-                            f"{outcome}, mais le fichier de verrouillage a été modifié "
-                            "par un autre programme et n'a pas été supprimé automatiquement. "
-                            "Assurez-vous qu'aucun programme n'enregistre ce CSV, "
-                            f"puis vérifiez ce fichier : {self.lock_path}"
+                        cleanup_error = StoreError(
+                            key="csv_lock_changed",
+                            params={"outcome": outcome, "path": self.lock_path},
+                            saved_result=state.saved_result,
                         )
                     else:
                         self.lock_path.unlink()
                 except OSError as exc:
-                    cleanup_message = (
-                        f"{outcome}, mais le fichier de verrouillage ne peut pas être "
-                        f"supprimé : {self.lock_path}. Vérifiez qu'aucun programme "
-                        "n'enregistre ce CSV avant de le supprimer manuellement. "
-                        f"Détail : {exc}"
+                    cleanup_error = StoreError(
+                        key="csv_lock_cleanup",
+                        params={"outcome": outcome, "path": self.lock_path, "detail": exc},
+                        saved_result=state.saved_result,
                     )
-                if cleanup_message is not None:
+                if cleanup_error is not None:
                     if pending_error is None:
-                        raise StoreError(cleanup_message, saved_result=state.saved_result)
-                    if isinstance(pending_error, (StoreError, ValueError)):
+                        raise cleanup_error
+                    if isinstance(pending_error, (StoreError, ValidationError)):
                         # Preserve the original failure and its cause.  Cleanup
                         # diagnostics must not replace the reason saving failed.
-                        pending_error.args = (f"{pending_error}\nAutre problème : {cleanup_message}",)
+                        pending_error.add_problem(cleanup_error)
                     elif hasattr(pending_error, "add_note"):
-                        pending_error.add_note(cleanup_message)
+                        pending_error.add_note(str(cleanup_error))
 
     def _stage_notes(self, notes: list[Note]) -> Path:
         descriptor, filename = tempfile.mkstemp(
@@ -371,35 +331,20 @@ class CSVStore:
             temporary.unlink(missing_ok=True)
             raise
 
-    def _stage_backup(self, data: bytes) -> Path:
-        descriptor, filename = tempfile.mkstemp(
-            prefix=f".{self.path.name}.backup.", suffix=".tmp", dir=self.path.parent
-        )
-        temporary = Path(filename)
-        try:
-            with os.fdopen(descriptor, "wb") as target:
-                target.write(data)
-                target.flush()
-                os.fsync(target.fileno())
-            return temporary
-        except BaseException:
-            temporary.unlink(missing_ok=True)
-            raise
-
     def append(self, candidates: list[Candidate]) -> SaveResult:
         """Add only new candidates, checking the latest CSV and batch once more."""
         prepared: list[tuple[str, str]] = []
         skipped = 0
         for candidate in candidates:
             if not isinstance(candidate, Candidate):
-                raise ValueError("Les données à enregistrer doivent provenir de l'aperçu des notes.")
+                raise ValidationError(key="preview_required")
             if candidate.status not in _CANDIDATE_STATUSES:
-                raise ValueError("L'état de l'aperçu est invalide. Actualisez l'aperçu avant d'enregistrer.")
+                raise ValidationError(key="preview_status")
             if candidate.status != "new":
                 skipped += 1
                 continue
             if candidate.category not in CATEGORIES:
-                raise ValueError("La catégorie de la note doit être « word » ou « sentence ».")
+                raise ValidationError(key="note_category_invalid")
             prepared.append((_valid_french(candidate.french), candidate.category))
 
         # Even a no-op checks the file's format, but creates no lock, directories,
@@ -427,24 +372,28 @@ class CSVStore:
                 lock_state.saved_result = result
                 return result
 
+            result = SaveResult(added, skipped)
             staged_csv: Path | None = None
-            staged_backup: Path | None = None
             try:
                 staged_csv = self._stage_notes(notes + added)
                 self._assert_unchanged(snapshot)
-                if snapshot.data is not None:
-                    staged_backup = self._stage_backup(snapshot.data)
-                    self._assert_unchanged(snapshot)
-                    os.replace(staged_backup, self.backup_path)
-                    staged_backup = None
-                self._assert_unchanged(snapshot)
                 os.replace(staged_csv, self.path)
+                # Replacement is the commit.  Record that outcome before any
+                # cleanup can fail, so the UI never asks to save these notes twice.
+                lock_state.saved_result = result
                 staged_csv = None
+                try:
+                    # Older releases kept this exact sibling backup.  Delete it
+                    # only after a successful commit; failures and no-ops leave
+                    # recovery data intact.  Never sweep other backup files.
+                    self.backup_path.unlink(missing_ok=True)
+                except OSError as exc:
+                    raise StoreError(
+                        key="csv_backup_cleanup",
+                        params={"path": self.backup_path, "detail": exc},
+                        saved_result=result,
+                    ) from exc
             finally:
                 if staged_csv is not None:
                     staged_csv.unlink(missing_ok=True)
-                if staged_backup is not None:
-                    staged_backup.unlink(missing_ok=True)
-            result = SaveResult(added, skipped)
-            lock_state.saved_result = result
             return result

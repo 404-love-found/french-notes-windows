@@ -1,12 +1,12 @@
 #define MyAppName "FrenchNotes"
-#define MyAppVersion "0.1.4"
+#define MyAppVersion "0.2.0"
 
 [Setup]
 ; Keep this ID unchanged so later versions upgrade the same application.
 AppId={{0D1280D3-6E15-4F02-ACBE-7D324964F42C}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-AppPublisher=FrenchNotes
+AppPublisher=ZIRELTON TECHNOLOGIES INC.
 AppPublisherURL=https://github.com/404-love-found/french-notes-windows
 AppSupportURL=https://github.com/404-love-found/french-notes-windows/issues
 AppUpdatesURL=https://github.com/404-love-found/french-notes-windows/releases
@@ -19,8 +19,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir=..\dist
 OutputBaseFilename=FrenchNotes-Setup-{#MyAppVersion}
-VersionInfoVersion=0.1.4.0
+VersionInfoVersion=0.2.0.0
 VersionInfoProductVersion={#MyAppVersion}
+VersionInfoCompany=ZIRELTON TECHNOLOGIES INC.
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -32,6 +33,10 @@ SignedUninstaller=no
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"
+#if FileExists(AddBackslash(CompilerPath) + "Languages\ChineseSimplified.isl")
+Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+#endif
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"

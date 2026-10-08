@@ -16,6 +16,7 @@ from french_notes.core import (
     Candidate,
     Note,
     StoreError,
+    ValidationError,
     classify,
     clean_text,
     normalize_key,
@@ -36,6 +37,25 @@ def csv_bytes(notes: list[Note], header=CSV_HEADER) -> bytes:
 
 
 class TextTests(unittest.TestCase):
+    def test_validation_error_keeps_value_error_compatibility_and_localizes(self):
+        with self.assertRaises(ValueError) as caught:
+            clean_text(123)
+        error = caught.exception
+        self.assertIsInstance(error, ValidationError)
+        self.assertEqual(error.key, "content_text_required")
+        self.assertEqual(error.params, {})
+        self.assertEqual(str(error), "Le contenu en français doit être du texte.")
+        self.assertEqual(error.localized_message("zh"), "法语内容必须是文字。")
+        self.assertEqual(error.localized_message("en"), "French content must be text.")
+        self.assertEqual(error.localized_message("unknown"), str(error))
+
+    def test_legacy_store_error_constructor_preserves_literal_message(self):
+        error = StoreError("external raw diagnostic")
+        self.assertIsNone(error.key)
+        self.assertEqual(str(error), "external raw diagnostic")
+        self.assertEqual(error.localized_message("zh"), str(error))
+        self.assertEqual(error.localized_message("en"), str(error))
+
     def test_clean_and_key_keep_accents_and_punctuation(self):
         self.assertEqual(clean_text("  BONJOUR\t  le\u00a0monde  "), "BONJOUR le monde")
         self.assertEqual(normalize_key("  ÉTÉ   doux "), normalize_key("été\tdoux"))
@@ -108,6 +128,58 @@ class CSVStoreTests(unittest.TestCase):
             self.store.preview("bonjour\n\n1234\n")
         self.assertFalse(self.path.exists())
 
+    def test_input_line_error_localizes_nested_validation_reason(self):
+        with self.assertRaises(ValidationError) as caught:
+            self.store.preview("bonjour\n\n1234")
+        error = caught.exception
+        self.assertEqual(error.key, "input_line_invalid")
+        self.assertEqual(error.params["line"], 3)
+        self.assertEqual(error.params["detail"].key, "letter_required")
+        chinese = error.localized_message("zh")
+        english = error.localized_message("en")
+        self.assertIn("输入第 3 行", chinese)
+        self.assertIn("至少需要一个字母", chinese)
+        self.assertIn("Input line 3", english)
+        self.assertIn("at least one letter", english)
+        for message in (chinese, english):
+            self.assertNotIn("Ligne", message)
+            self.assertNotIn("Chaque note", message)
+        self.assertFalse(self.path.exists())
+
+    def test_csv_header_error_localizes_without_changing_damaged_file(self):
+        original = b"wrong,header\r\n"
+        self.path.write_bytes(original)
+        with self.assertRaises(StoreError) as caught:
+            self.store.load()
+        error = caught.exception
+        self.assertEqual(error.key, "csv_header")
+        self.assertIn("CSV 表头", error.localized_message("zh"))
+        self.assertIn("CSV header must contain", error.localized_message("en"))
+        self.assertNotIn("L'en-tête", error.localized_message("zh"))
+        self.assertNotIn("L'en-tête", error.localized_message("en"))
+        self.assertEqual(self.path.read_bytes(), original)
+
+    def test_csv_row_error_localizes_nested_application_reason(self):
+        note = make_note("bonjour", "invalid")
+        self.write_notes([note])
+        original = self.path.read_bytes()
+        with self.assertRaises(StoreError) as caught:
+            self.store.load()
+        error = caught.exception
+        self.assertEqual(error.key, "csv_row_invalid")
+        self.assertEqual(error.params["line"], 2)
+        self.assertEqual(error.params["detail"].key, "category_invalid")
+        chinese = error.localized_message("zh")
+        english = error.localized_message("en")
+        self.assertIn("CSV 第 2 行", chinese)
+        self.assertIn("分类必须为 word 或 sentence", chinese)
+        self.assertIn("CSV line 2", english)
+        self.assertIn("category must be 'word' or 'sentence'", english)
+        for message in (chinese, english):
+            self.assertNotIn("Ligne", message)
+            self.assertNotIn("La catégorie", message)
+        self.assertEqual(self.path.read_bytes(), original)
+
     def test_append_only_new_and_allow_category_override(self):
         preview = self.store.preview("bonjour\n BONJOUR \nJe suis ici\n")
         preview[0].category = "sentence"
@@ -127,21 +199,47 @@ class CSVStoreTests(unittest.TestCase):
         self.assertEqual(len(result.added), 1)
         self.assertEqual(result.skipped, 1)
 
+    def test_successful_saves_keep_history_in_one_current_csv(self):
+        first = self.store.append(self.store.preview("bonjour"))
+        second = self.store.append(self.store.preview("merci\nJe suis ici"))
+        self.assertEqual(self.store.load(), first.added + second.added)
+        self.assertEqual(list(self.path.parent.iterdir()), [self.path])
+        self.assertFalse(self.store.backup_path.exists())
+        self.assert_clean()
+
+    def test_successful_save_removes_only_matching_legacy_backup(self):
+        original = make_note("bonjour")
+        self.write_notes([original])
+        self.store.backup_path.write_bytes(b"legacy backup")
+        unrelated = (
+            self.path.parent / "other.csv.bak",
+            self.path.parent / "notes.csv.bak.old",
+            self.path.parent / "other.csv",
+        )
+        for other in unrelated:
+            other.write_bytes(b"keep unrelated data")
+        result = self.store.append(self.store.preview("merci"))
+        self.assertEqual(self.store.load(), [original] + result.added)
+        self.assertFalse(self.store.backup_path.exists())
+        for other in unrelated:
+            self.assertEqual(other.read_bytes(), b"keep unrelated data")
+        self.assert_clean()
+
     def test_save_reloads_after_preview(self):
         preview = self.store.preview("bonjour\nmerci")
         external = make_note("BONJOUR")
         self.write_notes([external])
-        original = self.path.read_bytes()
         result = self.store.append(preview)
         self.assertEqual([note.french for note in result.added], ["merci"])
         self.assertEqual(result.skipped, 1)
         self.assertEqual(self.store.load()[0], external)
-        self.assertEqual(self.store.backup_path.read_bytes(), original)
+        self.assertFalse(self.store.backup_path.exists())
         self.assert_clean()
 
     def test_zero_new_does_not_touch_csv_or_backup(self):
         self.store.append(self.store.preview("bonjour"))
         self.store.append(self.store.preview("merci"))
+        self.store.backup_path.write_bytes(b"keep legacy backup on a no-op")
         original = self.path.read_bytes()
         backup = self.store.backup_path.read_bytes()
         csv_stat = self.path.stat().st_mtime_ns
@@ -171,10 +269,10 @@ class CSVStoreTests(unittest.TestCase):
         note = make_note('Il dit : "Bonjour, ami."\nEt il sourit.', "sentence")
         self.write_notes([note])
         self.assertEqual(self.store.load(), [note])
-        original = self.path.read_bytes()
         result = self.store.append(self.store.preview("merci"))
         self.assertEqual(self.store.load(), [note] + result.added)
-        self.assertEqual(self.store.backup_path.read_bytes(), original)
+        self.assertFalse(self.store.backup_path.exists())
+        self.assert_clean()
 
     def test_different_fd_and_path_signatures_do_not_report_false_edits(self):
         real_fstat = os.fstat
@@ -189,7 +287,6 @@ class CSVStoreTests(unittest.TestCase):
         for differences in variants:
             with self.subTest(differences=differences):
                 self.write_notes([original_note])
-                original = self.path.read_bytes()
 
                 def distinct_fd_stat(descriptor):
                     actual = real_fstat(descriptor)
@@ -206,7 +303,7 @@ class CSVStoreTests(unittest.TestCase):
                     result = self.store.append(self.store.preview("merci"))
                     self.assertEqual([note.french for note in result.added], ["merci"])
                     self.assertEqual(self.store.load(), [original_note] + result.added)
-                self.assertEqual(self.store.backup_path.read_bytes(), original)
+                self.assertFalse(self.store.backup_path.exists())
                 self.assert_clean()
 
     def test_fd_metadata_change_during_read_is_still_detected(self):
@@ -255,8 +352,14 @@ class CSVStoreTests(unittest.TestCase):
 
     def test_existing_lock_is_not_deleted(self):
         self.store.lock_path.write_text("pid=123\n", encoding="utf-8")
-        with self.assertRaisesRegex(StoreError, "supprimer manuellement le fichier de verrouillage"):
+        with self.assertRaisesRegex(StoreError, "supprimer manuellement le fichier de verrouillage") as caught:
             self.store.append([Candidate("bonjour", "word", "new")])
+        error = caught.exception
+        self.assertEqual(error.key, "csv_lock_exists")
+        self.assertIn("另一个实例正在保存", error.localized_message("zh"))
+        self.assertIn("Another instance is saving", error.localized_message("en"))
+        self.assertNotIn("Fermez les autres", error.localized_message("zh"))
+        self.assertNotIn("Fermez les autres", error.localized_message("en"))
         self.assertEqual(self.store.lock_path.read_text(encoding="utf-8"), "pid=123\n")
         self.assertFalse(self.path.exists())
 
@@ -328,6 +431,7 @@ class CSVStoreTests(unittest.TestCase):
 
     def test_atomic_replace_failure_keeps_original_and_cleans_up(self):
         self.write_notes([make_note("bonjour")])
+        self.store.backup_path.write_bytes(b"keep legacy backup")
         original = self.path.read_bytes()
         real_replace = os.replace
 
@@ -337,10 +441,11 @@ class CSVStoreTests(unittest.TestCase):
             return real_replace(source, destination)
 
         with patch("french_notes.core.os.replace", side_effect=fail_csv_replace):
-            with self.assertRaisesRegex(StoreError, "Impossible d'enregistrer le fichier CSV"):
+            with self.assertRaisesRegex(StoreError, "Impossible d'enregistrer le fichier CSV") as caught:
                 self.store.append([Candidate("merci", "word", "new")])
+        self.assertIsNone(caught.exception.saved_result)
         self.assertEqual(self.path.read_bytes(), original)
-        self.assertEqual(self.store.backup_path.read_bytes(), original)
+        self.assertEqual(self.store.backup_path.read_bytes(), b"keep legacy backup")
         self.assert_clean()
 
     def test_first_save_replace_failure_does_not_leave_csv_or_temp_files(self):
@@ -367,6 +472,11 @@ class CSVStoreTests(unittest.TestCase):
         self.assertIsNotNone(saved_result)
         self.assertEqual(self.store.load(), saved_result.added)
         self.assertEqual(saved_result.skipped, 0)
+        self.assertEqual(caught.exception.key, "csv_lock_cleanup")
+        self.assertIn("笔记已保存到 CSV", caught.exception.localized_message("zh"))
+        self.assertIn("无法删除锁文件", caught.exception.localized_message("zh"))
+        self.assertIn("notes have been saved", caught.exception.localized_message("en"))
+        self.assertIn("lock file could not be deleted", caught.exception.localized_message("en"))
         self.assertTrue(self.store.lock_path.exists())
         self.store.lock_path.unlink()
         self.assert_clean()
@@ -389,19 +499,90 @@ class CSVStoreTests(unittest.TestCase):
         self.assertIn("le fichier de verrouillage ne peut pas être supprimé", str(caught.exception))
         self.assertIsNone(caught.exception.saved_result)
         self.assertIsInstance(caught.exception.__cause__, OSError)
+        self.assertEqual(caught.exception.key, "csv_save_failed")
+        self.assertIn("无法保存 CSV 文件", caught.exception.localized_message("zh"))
+        self.assertIn("保存未完成", caught.exception.localized_message("zh"))
+        self.assertIn("另一个问题", caught.exception.localized_message("zh"))
+        self.assertIn("Unable to save the CSV file", caught.exception.localized_message("en"))
+        self.assertIn("Saving did not complete", caught.exception.localized_message("en"))
+        self.assertNotIn("Autre problème", caught.exception.localized_message("en"))
         self.assertEqual(self.path.read_bytes(), original)
         self.store.lock_path.unlink()
         self.assert_clean()
 
-    def test_backup_failure_keeps_original_and_old_backup(self):
+    def test_staging_failure_keeps_original_and_old_backup(self):
         self.write_notes([make_note("bonjour")])
         self.store.backup_path.write_bytes(b"older backup")
         original = self.path.read_bytes()
-        with patch("french_notes.core.os.replace", side_effect=PermissionError("denied")):
+        with patch.object(self.store, "_stage_notes", side_effect=OSError("staging failed")):
             with self.assertRaises(StoreError):
                 self.store.append([Candidate("merci", "word", "new")])
         self.assertEqual(self.path.read_bytes(), original)
         self.assertEqual(self.store.backup_path.read_bytes(), b"older backup")
+        self.assert_clean()
+
+    def test_legacy_backup_cleanup_failure_reports_already_saved_result(self):
+        original = make_note("bonjour")
+        self.write_notes([original])
+        self.store.backup_path.write_bytes(b"keep legacy backup")
+        real_unlink = Path.unlink
+
+        def fail_backup_unlink(path, *args, **kwargs):
+            if path == self.store.backup_path:
+                raise PermissionError("simulated backup cleanup failure")
+            return real_unlink(path, *args, **kwargs)
+
+        with patch("french_notes.core.Path.unlink", autospec=True, side_effect=fail_backup_unlink):
+            with self.assertRaisesRegex(StoreError, "l'ancienne sauvegarde") as caught:
+                self.store.append([Candidate("merci", "word", "new")])
+        result = caught.exception.saved_result
+        self.assertIsNotNone(result)
+        self.assertEqual(self.store.load(), [original] + result.added)
+        self.assertEqual([note.french for note in result.added], ["merci"])
+        self.assertEqual(result.skipped, 0)
+        self.assertIsInstance(caught.exception.__cause__, PermissionError)
+        self.assertEqual(caught.exception.key, "csv_backup_cleanup")
+        self.assertIn("无法删除旧备份", caught.exception.localized_message("zh"))
+        self.assertIn("old backup could not be deleted", caught.exception.localized_message("en"))
+        self.assertEqual(self.store.backup_path.read_bytes(), b"keep legacy backup")
+        self.assert_clean()
+
+    def test_backup_and_lock_cleanup_failures_keep_committed_result(self):
+        original = make_note("bonjour")
+        self.write_notes([original])
+        self.store.backup_path.write_bytes(b"keep legacy backup")
+        real_unlink = Path.unlink
+
+        def fail_cleanup_unlink(path, *args, **kwargs):
+            if path in (self.store.backup_path, self.store.lock_path):
+                raise PermissionError(f"simulated cleanup failure for {path.name}")
+            return real_unlink(path, *args, **kwargs)
+
+        with patch("french_notes.core.Path.unlink", autospec=True, side_effect=fail_cleanup_unlink):
+            with self.assertRaises(StoreError) as caught:
+                self.store.append([Candidate("merci", "word", "new")])
+        result = caught.exception.saved_result
+        self.assertIsNotNone(result)
+        self.assertEqual(self.store.load(), [original] + result.added)
+        self.assertIn("l'ancienne sauvegarde", str(caught.exception))
+        self.assertIn("le fichier de verrouillage ne peut pas être supprimé", str(caught.exception))
+        self.assertIsInstance(caught.exception.__cause__, PermissionError)
+        chinese = caught.exception.localized_message("zh")
+        english = caught.exception.localized_message("en")
+        self.assertIn("笔记已保存到 CSV", chinese)
+        self.assertIn("无法删除旧备份", chinese)
+        self.assertIn("无法删除锁文件", chinese)
+        self.assertIn("另一个问题", chinese)
+        self.assertIn("old backup could not be deleted", english)
+        self.assertIn("lock file could not be deleted", english)
+        self.assertIn("Additional problem", english)
+        for message in (chinese, english):
+            self.assertNotIn("Les notes", message)
+            self.assertNotIn("Autre problème", message)
+            self.assertNotIn("Détail", message)
+        self.assertEqual(self.store.backup_path.read_bytes(), b"keep legacy backup")
+        self.assertTrue(self.store.lock_path.exists())
+        self.store.lock_path.unlink()
         self.assert_clean()
 
     def test_external_modification_while_staging_is_detected(self):
@@ -469,6 +650,7 @@ class CSVStoreTests(unittest.TestCase):
 
     def test_fsync_failure_keeps_original_and_cleans_up(self):
         self.write_notes([make_note("bonjour")])
+        self.store.backup_path.write_bytes(b"keep legacy backup")
         original = self.path.read_bytes()
         real_fsync = os.fsync
         calls = 0
@@ -484,7 +666,7 @@ class CSVStoreTests(unittest.TestCase):
             with self.assertRaises(StoreError):
                 self.store.append([Candidate("merci", "word", "new")])
         self.assertEqual(self.path.read_bytes(), original)
-        self.assertFalse(self.store.backup_path.exists())
+        self.assertEqual(self.store.backup_path.read_bytes(), b"keep legacy backup")
         self.assert_clean()
 
     def test_utf8_without_bom_is_readable(self):
